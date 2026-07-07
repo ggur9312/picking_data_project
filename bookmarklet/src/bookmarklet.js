@@ -29,19 +29,82 @@
       return 'https://inbound.coupang.com/vendor-return/order/item/paging?page=0&isVirtualVendorReturn=false&vendorReturnOrderId=' +
         encodeURIComponent(vendorReturnOrderId) + '&orderItemSearchStatus=&size=1000';
     },
-    INVENTORY_URL: function (skuId) {
-      return 'https://inventory.coupang.com/async/inventory/search?searched=true&locationType=PICKING&skuId=' +
-        encodeURIComponent(skuId) + '&availableInventory=true&page=0&pageSize=20';
-    },
     INVENTORY_ARRAY_PATHS: ['', 'content', 'data', 'list', 'rows'],
     MIN_ALLOCATED_QTY: 1,
     ZONE_REGEX: /^\d+[A-Za-z]+/,
     LOCATION_BARCODE_SPLIT_INDEX: 1,
     FETCH_CREDENTIALS: 'include',
-    DELAY_MS: 150
+    DELAY_MS: 150,
+    INVENTORY_PAGE_URL: 'https://inventory.coupang.com/inventory/list',
+    INVENTORY_PAGE_ORIGIN: 'https://inventory.coupang.com',
+    RELAY_WINDOW_NAME: 'coupangInvRelay',
+    PING_TIMEOUT_MS: 2000,
+    REQUEST_TIMEOUT_MS: 10000,
+    MSG_SOURCE_MAIN: 'coupang-vr-bookmarklet',
+    MSG_SOURCE_RELAY: 'coupang-vr-relay'
   };
 
   var HEADERS = ['그룹번호', '마감일시', '생성일시', '매입유형', '업체명', '상태', '운송타입', '존', '수량'];
+
+  var pendingRequests = {};
+  var nextRequestId = 1;
+
+  window.addEventListener('message', function (event) {
+    var data = event.data;
+    if (!data || data.source !== CONFIG.MSG_SOURCE_RELAY) return;
+    if (data.type === 'PONG') {
+      if (pendingRequests['PING'] ) {
+        pendingRequests['PING'].resolve();
+        delete pendingRequests['PING'];
+      }
+      return;
+    }
+    if (data.type === 'INVENTORY_RESULT') {
+      var pending = pendingRequests[data.requestId];
+      if (!pending) return;
+      delete pendingRequests[data.requestId];
+      if (data.ok) pending.resolve(data.json);
+      else pending.reject(new Error(data.error));
+    }
+  });
+
+  function getOrOpenRelayWindow() {
+    if (window.__coupangInvRelayWin && !window.__coupangInvRelayWin.closed) {
+      return window.__coupangInvRelayWin;
+    }
+    var win = window.open(CONFIG.INVENTORY_PAGE_URL, CONFIG.RELAY_WINDOW_NAME);
+    window.__coupangInvRelayWin = win;
+    return win;
+  }
+
+  function pingRelay(relayWin) {
+    return new Promise(function (resolve, reject) {
+      pendingRequests['PING'] = { resolve: resolve, reject: reject };
+      relayWin.postMessage({ source: CONFIG.MSG_SOURCE_MAIN, type: 'PING' }, CONFIG.INVENTORY_PAGE_ORIGIN);
+      setTimeout(function () {
+        if (pendingRequests['PING']) {
+          delete pendingRequests['PING'];
+          reject(new Error('릴레이 응답 없음 (PING 타임아웃)'));
+        }
+      }, CONFIG.PING_TIMEOUT_MS);
+    });
+  }
+
+  function queryInventoryViaRelay(relayWin, skuId) {
+    return new Promise(function (resolve, reject) {
+      var requestId = 'req' + (nextRequestId++);
+      pendingRequests[requestId] = { resolve: resolve, reject: reject };
+      relayWin.postMessage({
+        source: CONFIG.MSG_SOURCE_MAIN, type: 'INVENTORY_QUERY', requestId: requestId, skuId: skuId
+      }, CONFIG.INVENTORY_PAGE_ORIGIN);
+      setTimeout(function () {
+        if (pendingRequests[requestId]) {
+          delete pendingRequests[requestId];
+          reject(new Error('릴레이 응답 없음 (skuId=' + skuId + ' 타임아웃)'));
+        }
+      }, CONFIG.REQUEST_TIMEOUT_MS);
+    });
+  }
 
   function sleep(ms) {
     return new Promise(function (resolve) {
@@ -104,13 +167,6 @@
     });
   }
 
-  function fetchJson(url) {
-    return fetch(url, { credentials: CONFIG.FETCH_CREDENTIALS }).then(function (resp) {
-      if (!resp.ok) throw new Error('요청 실패 (' + resp.status + '): ' + url);
-      return resp.json();
-    });
-  }
-
   function extractInventoryArray(json) {
     for (var i = 0; i < CONFIG.INVENTORY_ARRAY_PATHS.length; i++) {
       var path = CONFIG.INVENTORY_ARRAY_PATHS[i];
@@ -164,8 +220,8 @@
       .filter(Boolean);
   }
 
-  function scrapeInventoryRows(skuId) {
-    return fetchJson(CONFIG.INVENTORY_URL(skuId)).then(function (json) {
+  function scrapeInventoryRows(relayWin, skuId) {
+    return queryInventoryViaRelay(relayWin, skuId).then(function (json) {
       var entries = extractInventoryArray(json);
       var results = [];
       entries.forEach(function (entry) {
@@ -263,6 +319,20 @@
       return Promise.resolve();
     }
 
+    var relayWin = getOrOpenRelayWindow();
+    if (!relayWin) {
+      alert('재고조회 탭을 열 수 없습니다. 팝업 차단을 해제하고 다시 시도하세요.');
+      return Promise.resolve();
+    }
+
+    return pingRelay(relayWin).then(function () {
+      return runPipeline(relayWin, dataRows, selectedRowNumbers);
+    }, function () {
+      alert('재고조회 릴레이가 준비되지 않았습니다.\n' + CONFIG.INVENTORY_PAGE_URL + ' 탭에서 "재고조회 릴레이" 북마크릿을 먼저 실행한 뒤, 이 북마크릿을 다시 실행하세요.');
+    });
+  }
+
+  function runPipeline(relayWin, dataRows, selectedRowNumbers) {
     var outputRows = [];
 
     function processRow(rowNum) {
@@ -294,7 +364,7 @@
           var chain = Promise.resolve();
           skuIds.forEach(function (skuId) {
             chain = chain.then(function () {
-              return scrapeInventoryRows(skuId).then(function (invRows) {
+              return scrapeInventoryRows(relayWin, skuId).then(function (invRows) {
                 return sleep(CONFIG.DELAY_MS).then(function () {
                   invRows.forEach(function (ir) {
                     outputRows.push([
@@ -303,6 +373,8 @@
                     ]);
                   });
                 });
+              }).catch(function (err) {
+                console.error('skuId=' + skuId + ' 재고 조회 실패:', err);
               });
             });
           });
