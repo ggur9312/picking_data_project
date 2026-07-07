@@ -10,7 +10,7 @@
 
 ## 사용법
 
-1. `#vendorReturnOderPage` 테이블이 있는 목록 페이지로 이동
+1. `#vendorReturnOrderPage` 테이블이 있는 목록 페이지로 이동
 2. 방금 만든 북마크릿 클릭
 3. 팝업으로 뜨는 입력창에 처리할 행 번호 입력
    - 비워두면 전체 행
@@ -27,7 +27,7 @@
 
 이 코드는 실제 쿠팡 사이트에 접근하지 않고 명세만으로 작성되었기 때문에, 아래 항목들은 실제 페이지와 다를 수 있습니다. 문제가 생기면 `bookmarklet/src/bookmarklet.js` 최상단의 `CONFIG` 객체만 수정하면 됩니다.
 
-- **테이블 id**: `#vendorReturnOderPage` (오타로 보이는 표기 그대로 사용)
+- **테이블 id**: `#vendorReturnOrderPage`
 - **상세 페이지 컬럼 인덱스**: 상세 페이지에 테이블이 최소 2개 있다고 가정하고, 첫 번째/두 번째 테이블의 특정 열(`CONFIG.DETAIL_TABLE1_COLS`, `CONFIG.DETAIL_TABLE2_COLS`)을 읽습니다. 실제와 다르면 이 값들을 수정하세요.
 - **재고 API(JSON) 응답 구조**: 응답이 배열 자체이거나 `.content`/`.data`/`.list`/`.rows` 중 하나일 것으로 가정합니다(`CONFIG.INVENTORY_ARRAY_PATHS`). 맞는 경로가 없으면 콘솔에 `"알 수 없는 재고 API 응답 구조, 원본 JSON: ..."` 로그가 찍히니, 실제 구조를 확인해서 `INVENTORY_ARRAY_PATHS`에 경로를 추가하세요.
 - **크로스 도메인 요청**: 목록 페이지가 속한 도메인과 `inbound.coupang.com`, `inventory.coupang.com`으로의 `fetch` 요청은 `credentials: 'include'`로 쿠키를 포함해 보냅니다. 만약 이 도메인들 간 CORS 정책이 크로스 오리진 인증 요청을 막고 있다면, 콘솔에 CORS 관련 에러(`Failed to fetch` 등)가 즉시 나타납니다 — 이는 북마크릿 코드로는 우회할 수 없는 서버 측 정책이므로, 발생 시 별도 방법(같은 오리진에서 실행되는 확장 프로그램 등)을 검토해야 합니다.

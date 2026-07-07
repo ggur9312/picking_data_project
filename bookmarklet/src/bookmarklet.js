@@ -11,7 +11,7 @@
   // 실제 동작이 다르면 이 블록만 고치면 됨.
   // ---------------------------------------------------------------------
   var CONFIG = {
-    LIST_TABLE_ID: 'vendorReturnOderPage',
+    LIST_TABLE_ID: 'vendorReturnOrderPage',
     DETAIL_TABLE1_COLS: {
       groupNo: 0,
       purchaseType: 3,
