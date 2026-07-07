@@ -196,14 +196,16 @@
     return m ? m[1] : null;
   }
 
-  function scrapeCommonData(detailHtml) {
+  function getDetailRows(detailHtml) {
     var doc = parseHtml(detailHtml);
     var tables = doc.querySelectorAll('table');
     if (tables.length < 2) {
       throw new Error('상세 페이지에서 테이블 2개를 찾지 못함 (찾은 개수: ' + tables.length + ')');
     }
-    var row1 = getDataRow(tables[0]);
-    var row2 = getDataRow(tables[1]);
+    return { row1: getDataRow(tables[0]), row2: getDataRow(tables[1]) };
+  }
+
+  function scrapeCommonData(row1, row2) {
     var groupNo = cellText(row1, 0);
     var purchaseType = cellText(row1, 3);
     var createdAt = cellText(row1, 5);
@@ -233,11 +235,13 @@
   }
 
   function processLink(link) {
-    var orderId = extractOrderIdFromUrl(link);
     return fetchText(link).then(function (detailHtml) {
+      var detailRows = getDetailRows(detailHtml);
+      var orderId = cellText(detailRows.row1, 2);
+      if (!orderId) orderId = extractOrderIdFromUrl(link);
       if (!orderId) orderId = extractOrderIdFromHtml(detailHtml);
       if (!orderId) throw new Error('vendorReturnOrderId를 찾지 못함: ' + link);
-      var common = scrapeCommonData(detailHtml);
+      var common = scrapeCommonData(detailRows.row1, detailRows.row2);
       var commonStr = common.join('\t');
       return fetchText(CONFIG.ITEM_LIST_URL(orderId)).then(function (itemHtml) {
         var skuIds = scrapeSkuIds(itemHtml);
