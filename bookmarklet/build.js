@@ -1,4 +1,4 @@
-// 빌드 스크립트: src/*.js -> javascript: URI로 변환
+// 빌드 스크립트: src/bookmarklet.js -> javascript: URI로 변환
 // 의존성 없이 순수 Node로 동작. 실행: node bookmarklet/build.js
 'use strict';
 
@@ -7,8 +7,7 @@ var path = require('path');
 
 var DIST_DIR = path.join(__dirname, 'dist');
 var TARGETS = [
-  { src: path.join(__dirname, 'src', 'bookmarklet.js'), dist: path.join(DIST_DIR, 'bookmarklet.url.txt') },
-  { src: path.join(__dirname, 'src', 'relay.js'), dist: path.join(DIST_DIR, 'relay.url.txt') }
+  { src: path.join(__dirname, 'src', 'bookmarklet.js'), dist: path.join(DIST_DIR, 'bookmarklet.url.txt') }
 ];
 
 function stripComments(source) {

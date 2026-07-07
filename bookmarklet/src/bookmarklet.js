@@ -1,110 +1,39 @@
 // 쿠팡 벤더 반품(vendor-return) 처리 데이터 수집 북마크릿
 //
+// 목록 페이지(inbound.coupang.com)와 재고조회 API(inventory.coupang.com)가
+// 서로 다른 도메인이라 직접 fetch()하면 CORS로 막힙니다. 이 북마크릿은
+// 같은 스크립트를 두 번 클릭해서 씁니다:
+//   1) 목록 페이지에서 클릭 -> 데이터 수집 후 재고조회 페이지를 새 창으로 열고
+//      window.name에 수집한 데이터를 실어 보냄 (도메인이 바뀌어도 유지되는
+//      브라우저 특성 이용, CORS와 무관)
+//   2) 새로 열린 재고조회 페이지에서 다시 클릭 -> window.name에서 데이터를 읽어
+//      같은 출처(same-origin)로 재고 API를 호출 (CORS 문제 없음)
+//
 // 주의: 이 파일은 build.js가 "한 줄 시작 // 주석"과 "/* */ 블록"만 제거해서 압축합니다.
 // 코드가 있는 줄 끝에 // 주석을 붙이지 마세요 (특히 URL 문자열이 있는 줄).
-// 주석은 항상 자기 줄에 단독으로 작성합니다.
 (function () {
   'use strict';
 
-  // ---------------------------------------------------------------------
-  // CONFIG: 실제 사이트를 보지 않고 명세만으로 추정한 값들을 모두 여기에 모아둠.
-  // 실제 동작이 다르면 이 블록만 고치면 됨.
-  // ---------------------------------------------------------------------
   var CONFIG = {
-    LIST_TABLE_ID: 'vendorReturnOrderPage',
-    DETAIL_TABLE1_COLS: {
-      groupNo: 0,
-      purchaseType: 3,
-      createdAt: 5,
-      deadline: 6,
-      status: 7,
-      vendorReturnOrderId: 2
+    LIST_CONTAINER_ID: 'vendorReturnOrderPage',
+    ITEM_LIST_URL: function (orderId) {
+      return 'https://inbound.coupang.com/vendor-return/order/item/paging?page=0&size=1000&pageSize=1000&isVirtualVendorReturn=false&vendorReturnOrderId=' +
+        encodeURIComponent(orderId) + '&orderItemSearchStatus=';
     },
-    DETAIL_TABLE2_COLS: {
-      vendorName: 0,
-      transportType: 3
+    INVENTORY_PAGE_SIZE: 20,
+    INVENTORY_SEARCH_URL: function (skuId, page) {
+      return 'https://inventory.coupang.com/async/inventory/search?searched=true&locationType=PICKING&zone=&fromLocation=&toLocation=&locationBarcode=&skuId=' +
+        encodeURIComponent(skuId) + '&externalSkuId=&skuBarcode=&lpnId=&inventoryId=&saleableChangeType=&availableInventory=true&page=' +
+        page + '&pageSize=' + CONFIG.INVENTORY_PAGE_SIZE;
     },
-    ITEM_LIST_SKU_COL: 0,
-    ITEM_LIST_URL: function (vendorReturnOrderId) {
-      return 'https://inbound.coupang.com/vendor-return/order/item/paging?page=0&isVirtualVendorReturn=false&vendorReturnOrderId=' +
-        encodeURIComponent(vendorReturnOrderId) + '&orderItemSearchStatus=&size=1000';
-    },
-    INVENTORY_ARRAY_PATHS: ['', 'content', 'data', 'list', 'rows'],
-    MIN_ALLOCATED_QTY: 1,
-    ZONE_REGEX: /^\d+[A-Za-z]+/,
-    LOCATION_BARCODE_SPLIT_INDEX: 1,
-    FETCH_CREDENTIALS: 'include',
-    DELAY_MS: 150,
     INVENTORY_PAGE_URL: 'https://inventory.coupang.com/inventory/list',
-    INVENTORY_PAGE_ORIGIN: 'https://inventory.coupang.com',
-    RELAY_WINDOW_NAME: 'coupangInvRelay',
-    PING_TIMEOUT_MS: 2000,
-    REQUEST_TIMEOUT_MS: 10000,
-    MSG_SOURCE_MAIN: 'coupang-vr-bookmarklet',
-    MSG_SOURCE_RELAY: 'coupang-vr-relay'
+    PICKING_STATUS_SUBSTR: '집품',
+    FETCH_CREDENTIALS: 'include',
+    DELAY_MS: 120,
+    PAYLOAD_PREFIX: 'manual_hold||'
   };
 
-  var HEADERS = ['그룹번호', '마감일시', '생성일시', '매입유형', '업체명', '상태', '운송타입', '존', '수량'];
-
-  var pendingRequests = {};
-  var nextRequestId = 1;
-
-  window.addEventListener('message', function (event) {
-    var data = event.data;
-    if (!data || data.source !== CONFIG.MSG_SOURCE_RELAY) return;
-    if (data.type === 'PONG') {
-      if (pendingRequests['PING'] ) {
-        pendingRequests['PING'].resolve();
-        delete pendingRequests['PING'];
-      }
-      return;
-    }
-    if (data.type === 'INVENTORY_RESULT') {
-      var pending = pendingRequests[data.requestId];
-      if (!pending) return;
-      delete pendingRequests[data.requestId];
-      if (data.ok) pending.resolve(data.json);
-      else pending.reject(new Error(data.error));
-    }
-  });
-
-  function getOrOpenRelayWindow() {
-    if (window.__coupangInvRelayWin && !window.__coupangInvRelayWin.closed) {
-      return window.__coupangInvRelayWin;
-    }
-    var win = window.open(CONFIG.INVENTORY_PAGE_URL, CONFIG.RELAY_WINDOW_NAME);
-    window.__coupangInvRelayWin = win;
-    return win;
-  }
-
-  function pingRelay(relayWin) {
-    return new Promise(function (resolve, reject) {
-      pendingRequests['PING'] = { resolve: resolve, reject: reject };
-      relayWin.postMessage({ source: CONFIG.MSG_SOURCE_MAIN, type: 'PING' }, CONFIG.INVENTORY_PAGE_ORIGIN);
-      setTimeout(function () {
-        if (pendingRequests['PING']) {
-          delete pendingRequests['PING'];
-          reject(new Error('릴레이 응답 없음 (PING 타임아웃)'));
-        }
-      }, CONFIG.PING_TIMEOUT_MS);
-    });
-  }
-
-  function queryInventoryViaRelay(relayWin, skuId) {
-    return new Promise(function (resolve, reject) {
-      var requestId = 'req' + (nextRequestId++);
-      pendingRequests[requestId] = { resolve: resolve, reject: reject };
-      relayWin.postMessage({
-        source: CONFIG.MSG_SOURCE_MAIN, type: 'INVENTORY_QUERY', requestId: requestId, skuId: skuId
-      }, CONFIG.INVENTORY_PAGE_ORIGIN);
-      setTimeout(function () {
-        if (pendingRequests[requestId]) {
-          delete pendingRequests[requestId];
-          reject(new Error('릴레이 응답 없음 (skuId=' + skuId + ' 타임아웃)'));
-        }
-      }, CONFIG.REQUEST_TIMEOUT_MS);
-    });
-  }
+  var HEADERS = ['그룹번호', '마감일자', '생성일자', '매입유형', '업체명', '상태', '운송타입', '존', '수량'];
 
   function sleep(ms) {
     return new Promise(function (resolve) {
@@ -139,100 +68,6 @@
       .map(function (k) { return parseInt(k, 10); })
       .filter(function (n) { return n >= 1 && n <= totalRows; })
       .sort(function (x, y) { return x - y; });
-  }
-
-  function getAllDataRows(table) {
-    var tbody = table.querySelector('tbody');
-    if (tbody) return Array.prototype.slice.call(tbody.rows);
-    return Array.prototype.slice.call(table.rows);
-  }
-
-  function getFirstDataRow(table) {
-    var rows = getAllDataRows(table);
-    return rows.length > 0 ? rows[0] : null;
-  }
-
-  function getCellText(table, colIndex) {
-    var row = getFirstDataRow(table);
-    if (!row || !row.cells[colIndex]) return null;
-    return row.cells[colIndex].textContent.trim();
-  }
-
-  function fetchAndParseHtml(url) {
-    return fetch(url, { credentials: CONFIG.FETCH_CREDENTIALS }).then(function (resp) {
-      if (!resp.ok) throw new Error('요청 실패 (' + resp.status + '): ' + url);
-      return resp.text();
-    }).then(function (text) {
-      return new DOMParser().parseFromString(text, 'text/html');
-    });
-  }
-
-  function extractInventoryArray(json) {
-    for (var i = 0; i < CONFIG.INVENTORY_ARRAY_PATHS.length; i++) {
-      var path = CONFIG.INVENTORY_ARRAY_PATHS[i];
-      var candidate = path === '' ? json : (json ? json[path] : undefined);
-      if (Array.isArray(candidate)) return candidate;
-    }
-    console.error('알 수 없는 재고 API 응답 구조, 원본 JSON:', JSON.stringify(json));
-    return [];
-  }
-
-  function zoneFromLocationBarcode(barcode) {
-    if (!barcode) return null;
-    var segments = barcode.split('-');
-    if (segments.length <= CONFIG.LOCATION_BARCODE_SPLIT_INDEX) {
-      console.warn('예상치 못한 locationBarcode 형식:', barcode);
-      return null;
-    }
-    var segment = segments[CONFIG.LOCATION_BARCODE_SPLIT_INDEX];
-    var match = segment.match(CONFIG.ZONE_REGEX);
-    return match ? match[0] : null;
-  }
-
-  function scrapeCommonData(doc) {
-    var tables = doc.querySelectorAll('table');
-    if (tables.length < 2) {
-      throw new Error('상세 페이지에서 테이블 2개를 찾지 못함 (찾은 개수: ' + tables.length + ')');
-    }
-    var table1 = tables[0];
-    var table2 = tables[1];
-    var common = {
-      groupNo: getCellText(table1, CONFIG.DETAIL_TABLE1_COLS.groupNo),
-      deadline: getCellText(table1, CONFIG.DETAIL_TABLE1_COLS.deadline),
-      createdAt: getCellText(table1, CONFIG.DETAIL_TABLE1_COLS.createdAt),
-      purchaseType: getCellText(table1, CONFIG.DETAIL_TABLE1_COLS.purchaseType),
-      status: getCellText(table1, CONFIG.DETAIL_TABLE1_COLS.status),
-      vendorName: getCellText(table2, CONFIG.DETAIL_TABLE2_COLS.vendorName),
-      transportType: getCellText(table2, CONFIG.DETAIL_TABLE2_COLS.transportType)
-    };
-    var vendorReturnOrderId = getCellText(table1, CONFIG.DETAIL_TABLE1_COLS.vendorReturnOrderId);
-    return { common: common, vendorReturnOrderId: vendorReturnOrderId };
-  }
-
-  function scrapeSkuIds(doc) {
-    var table = doc.querySelector('table');
-    if (!table) return [];
-    return getAllDataRows(table)
-      .map(function (row) {
-        var cell = row.cells[CONFIG.ITEM_LIST_SKU_COL];
-        return cell ? cell.textContent.trim() : null;
-      })
-      .filter(Boolean);
-  }
-
-  function scrapeInventoryRows(relayWin, skuId) {
-    return queryInventoryViaRelay(relayWin, skuId).then(function (json) {
-      var entries = extractInventoryArray(json);
-      var results = [];
-      entries.forEach(function (entry) {
-        var qty = Number(entry.allocatedQuantity);
-        if (!(qty >= CONFIG.MIN_ALLOCATED_QTY)) return;
-        var zone = zoneFromLocationBarcode(entry.locationBarcode);
-        if (zone == null) return;
-        results.push({ zone: zone, qty: qty });
-      });
-      return results;
-    });
   }
 
   function escapeHtml(str) {
@@ -297,106 +132,280 @@
     });
   }
 
-  function main() {
-    var table = document.getElementById(CONFIG.LIST_TABLE_ID);
-    if (!table) {
-      alert('테이블을 찾을 수 없습니다: #' + CONFIG.LIST_TABLE_ID);
-      return Promise.resolve();
-    }
-    var dataRows = getAllDataRows(table);
-    var totalRows = dataRows.length;
-    if (totalRows === 0) {
-      alert('데이터 행이 없습니다.');
-      return Promise.resolve();
-    }
+  function createProgressOverlay(title) {
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.85);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:sans-serif;';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#1e293b;padding:30px;border-radius:12px;box-shadow:0 10px 25px rgba(0,0,0,0.4);width:450px;text-align:center;border:1px solid #334155;';
+    box.innerHTML = '<h2 style="margin:0 0 15px 0;font-size:18px;color:#f8fafc;font-weight:bold;">' + escapeHtml(title) + '</h2>' +
+      '<div style="background:#334155;border-radius:6px;height:16px;width:100%;overflow:hidden;margin-bottom:12px;">' +
+      '<div id="cp-bar" style="background:linear-gradient(90deg,#38bdf8,#0284c7);height:100%;width:0%;transition:width 0.1s ease;"></div></div>' +
+      '<div id="cp-txt" style="font-size:14px;color:#94a3b8;font-weight:500;white-space:pre-line;line-height:1.5;">준비 중...</div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    var bar = box.querySelector('#cp-bar');
+    var txt = box.querySelector('#cp-txt');
+    return {
+      update: function (current, total, label) {
+        var pct = total > 0 ? Math.floor((current / total) * 100) : 0;
+        bar.style.width = pct + '%';
+        txt.textContent = '진행률: ' + pct + '% (' + current + '/' + total + ')\n현재 처리: ' + label;
+      },
+      remove: function () {
+        overlay.remove();
+      }
+    };
+  }
 
-    var input = prompt('총 ' + totalRows + '개 행. 처리할 행 번호를 입력하세요.\n예: 4  또는  1,3,4  또는  1-3 (1~3도 가능)\n비워두면 전체 처리합니다.');
-    if (input === null) return Promise.resolve();
-
-    var selectedRowNumbers = parseRowSelection(input, totalRows);
-    if (selectedRowNumbers.length === 0) {
-      alert('처리할 행이 없습니다.');
-      return Promise.resolve();
-    }
-
-    var relayWin = getOrOpenRelayWindow();
-    if (!relayWin) {
-      alert('재고조회 탭을 열 수 없습니다. 팝업 차단을 해제하고 다시 시도하세요.');
-      return Promise.resolve();
-    }
-
-    return pingRelay(relayWin).then(function () {
-      return runPipeline(relayWin, dataRows, selectedRowNumbers);
-    }, function () {
-      alert('재고조회 릴레이가 준비되지 않았습니다.\n' + CONFIG.INVENTORY_PAGE_URL + ' 탭에서 "재고조회 릴레이" 북마크릿을 먼저 실행한 뒤, 이 북마크릿을 다시 실행하세요.');
+  function fetchText(url) {
+    return fetch(url, { credentials: CONFIG.FETCH_CREDENTIALS }).then(function (resp) {
+      if (!resp.ok) throw new Error('요청 실패 (' + resp.status + '): ' + url);
+      return resp.text();
     });
   }
 
-  function runPipeline(relayWin, dataRows, selectedRowNumbers) {
-    var outputRows = [];
+  function parseHtml(text) {
+    return new DOMParser().parseFromString(text, 'text/html');
+  }
 
-    function processRow(rowNum) {
-      var row = dataRows[rowNum - 1];
-      var anchor = row.cells[1] ? row.cells[1].querySelector('a') : null;
-      if (!anchor) {
-        console.warn(rowNum + '번 행: 2번째 셀에서 링크를 찾지 못해 건너뜀');
-        return Promise.resolve();
+  function getDataRow(table) {
+    var trs = table.querySelectorAll('tr');
+    return trs[1] || trs[0] || null;
+  }
+
+  function cellText(row, idx) {
+    if (!row) return null;
+    var cells = row.querySelectorAll('td');
+    return cells[idx] ? cells[idx].textContent.trim() : null;
+  }
+
+  function cellTextFromEnd(row, fromEnd) {
+    if (!row) return null;
+    var cells = row.querySelectorAll('td');
+    var idx = cells.length - fromEnd;
+    return cells[idx] ? cells[idx].textContent.trim() : null;
+  }
+
+  function extractOrderIdFromUrl(url) {
+    var m = url.match(/vendorReturnOrderId=(\d+)/);
+    return m ? m[1] : null;
+  }
+
+  function extractOrderIdFromHtml(html) {
+    var m = html.match(/vendorReturnOrderId\s*=\s*["']?(\d+)/);
+    return m ? m[1] : null;
+  }
+
+  function scrapeCommonData(detailHtml) {
+    var doc = parseHtml(detailHtml);
+    var tables = doc.querySelectorAll('table');
+    if (tables.length < 2) {
+      throw new Error('상세 페이지에서 테이블 2개를 찾지 못함 (찾은 개수: ' + tables.length + ')');
+    }
+    var row1 = getDataRow(tables[0]);
+    var row2 = getDataRow(tables[1]);
+    var groupNo = cellText(row1, 0);
+    var purchaseType = cellText(row1, 3);
+    var createdAt = cellText(row1, 5);
+    var status = cellText(row1, 7);
+    var vendorName = cellText(row2, 0);
+    var transportType = cellTextFromEnd(row2, 3);
+    var deadline = purchaseType === '쿠팡상품' ? cellTextFromEnd(row2, 4) : cellText(row1, 6);
+    return [groupNo, deadline, createdAt, purchaseType, vendorName, status, transportType];
+  }
+
+  function scrapeSkuIds(itemListHtml) {
+    var doc = parseHtml(itemListHtml);
+    var table = doc.querySelector('table');
+    if (!table) return [];
+    var rows = table.querySelectorAll('tbody tr, tr');
+    var results = [];
+    rows.forEach(function (row) {
+      var tds = row.querySelectorAll('td');
+      if (tds.length < 10) return;
+      var skuId = tds[0].textContent.trim().replace(/,/g, '');
+      var status = tds[9].textContent.trim();
+      if (skuId && /^\d+$/.test(skuId) && status.indexOf(CONFIG.PICKING_STATUS_SUBSTR) !== -1) {
+        results.push(skuId);
       }
-      var detailUrl = anchor.href;
-      var common, vendorReturnOrderId;
+    });
+    return results;
+  }
 
-      return fetchAndParseHtml(detailUrl)
-        .then(function (detailDoc) {
-          return sleep(CONFIG.DELAY_MS).then(function () { return detailDoc; });
-        })
-        .then(function (detailDoc) {
-          var scraped = scrapeCommonData(detailDoc);
-          common = scraped.common;
-          vendorReturnOrderId = scraped.vendorReturnOrderId;
-          if (!vendorReturnOrderId) throw new Error(rowNum + '번 행: vendorReturnOrderId를 찾지 못함');
-          return fetchAndParseHtml(CONFIG.ITEM_LIST_URL(vendorReturnOrderId));
-        })
-        .then(function (itemListDoc) {
-          return sleep(CONFIG.DELAY_MS).then(function () { return itemListDoc; });
-        })
-        .then(function (itemListDoc) {
-          var skuIds = scrapeSkuIds(itemListDoc);
-          var chain = Promise.resolve();
-          skuIds.forEach(function (skuId) {
-            chain = chain.then(function () {
-              return scrapeInventoryRows(relayWin, skuId).then(function (invRows) {
-                return sleep(CONFIG.DELAY_MS).then(function () {
-                  invRows.forEach(function (ir) {
-                    outputRows.push([
-                      common.groupNo, common.deadline, common.createdAt, common.purchaseType,
-                      common.vendorName, common.status, common.transportType, ir.zone, ir.qty
-                    ]);
-                  });
-                });
-              }).catch(function (err) {
-                console.error('skuId=' + skuId + ' 재고 조회 실패:', err);
-              });
-            });
-          });
-          return chain;
-        })
-        .catch(function (err) {
-          console.error(rowNum + '번 행 처리 중 오류:', err);
-        });
+  function processLink(link) {
+    var orderId = extractOrderIdFromUrl(link);
+    return fetchText(link).then(function (detailHtml) {
+      if (!orderId) orderId = extractOrderIdFromHtml(detailHtml);
+      if (!orderId) throw new Error('vendorReturnOrderId를 찾지 못함: ' + link);
+      var common = scrapeCommonData(detailHtml);
+      var commonStr = common.join('\t');
+      return fetchText(CONFIG.ITEM_LIST_URL(orderId)).then(function (itemHtml) {
+        var skuIds = scrapeSkuIds(itemHtml);
+        return skuIds.map(function (skuId) { return skuId + '||' + commonStr; });
+      });
+    });
+  }
+
+  function runStep1() {
+    var container = document.querySelector('#' + CONFIG.LIST_CONTAINER_ID);
+    var rows = container.querySelectorAll('table tbody tr');
+    if (rows.length === 0) {
+      alert('화면에 표시된 행이 없습니다.');
+      return;
+    }
+    var input = prompt('총 ' + rows.length + '개 행. 처리할 행 번호를 입력하세요.\n예: 4  또는  1,3,4  또는  1-3 (1~3도 가능)\n비워두면 전체 처리합니다.');
+    if (input === null) return;
+    var selected = parseRowSelection(input, rows.length);
+    if (selected.length === 0) {
+      alert('처리할 행이 없습니다.');
+      return;
     }
 
+    var links = [];
+    selected.forEach(function (n) {
+      var row = rows[n - 1];
+      var td2 = row.cells[1];
+      var a = td2 ? td2.querySelector('a') : null;
+      if (a && a.href) links.push(a.href);
+    });
+    if (links.length === 0) {
+      alert('수집할 링크가 없습니다.');
+      return;
+    }
+
+    var overlay = createProgressOverlay('1단계: 반품 정보 수집 중');
+    var lines = [];
     var pipeline = Promise.resolve();
-    selectedRowNumbers.forEach(function (rowNum) {
-      pipeline = pipeline.then(function () { return processRow(rowNum); });
+    links.forEach(function (link, idx) {
+      pipeline = pipeline.then(function () {
+        overlay.update(idx + 1, links.length, link);
+        return processLink(link).then(function (newLines) {
+          lines = lines.concat(newLines);
+        }).catch(function (err) {
+          console.error('링크 처리 실패:', link, err);
+        }).then(function () { return sleep(CONFIG.DELAY_MS); });
+      });
     });
 
     return pipeline.then(function () {
-      renderPopup(outputRows);
+      overlay.remove();
+      if (lines.length === 0) {
+        alert('수집된 데이터가 없습니다. (집품중/집품대기 상태의 아이템이 없을 수 있습니다)');
+        return;
+      }
+      var payload = CONFIG.PAYLOAD_PREFIX + lines.join('\n');
+      var winName = 'coupangInv_' + Date.now();
+      var win = window.open(CONFIG.INVENTORY_PAGE_URL, winName);
+      if (!win) {
+        alert('팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.');
+        return;
+      }
+      win.name = payload;
+      alert('데이터 수집 완료 (' + lines.length + '건)! 새 창이 뜨면 그 창에서 이 북마크릿을 한 번 더 눌러주세요.');
     });
   }
 
-  main().catch(function (err) {
-    console.error(err);
-    alert('오류 발생: ' + err.message);
-  });
+  function zoneFromLocationBarcode(barcode) {
+    if (!barcode) return '';
+    var segments = barcode.split('-');
+    if (segments[1] && /^\d/.test(segments[1])) {
+      return segments[1].substring(0, 3);
+    }
+    return barcode;
+  }
+
+  function fetchInventoryAllPages(skuId) {
+    var results = [];
+    function loop(page) {
+      return fetch(CONFIG.INVENTORY_SEARCH_URL(skuId, page), { credentials: 'same-origin' }).then(function (resp) {
+        if (!resp.ok) throw new Error('요청 실패 (' + resp.status + ')');
+        return resp.json();
+      }).then(function (json) {
+        if (!json || !json.success || !json.result || !Array.isArray(json.result.content)) {
+          return results;
+        }
+        json.result.content.forEach(function (row) {
+          var qty = Number(row.allocatedQuantity) || 0;
+          if (row.locationType === 'PICKING' && qty > 0) {
+            results.push({ zone: zoneFromLocationBarcode(row.locationBarcode), qty: qty });
+          }
+        });
+        if (json.result.last === true || json.result.content.length === 0) {
+          return results;
+        }
+        return loop(page + 1);
+      });
+    }
+    return loop(0);
+  }
+
+  function runStep2() {
+    var name = window.name;
+    if (!name || name.indexOf(CONFIG.PAYLOAD_PREFIX) !== 0) {
+      alert('데이터를 찾을 수 없습니다. 목록 페이지에서 이 북마크릿을 먼저 실행해 주세요.');
+      return;
+    }
+    window.name = '';
+    var body = name.slice(CONFIG.PAYLOAD_PREFIX.length);
+    var lines = body.split('\n').filter(function (l) { return l.indexOf('||') !== -1; });
+    if (lines.length === 0) {
+      alert('처리할 데이터가 없습니다.');
+      return;
+    }
+
+    var overlay = createProgressOverlay('2단계: 재고 매칭 스캔 중');
+    var rawRecords = [];
+    var pipeline = Promise.resolve();
+    lines.forEach(function (line, idx) {
+      var parts = line.split('||');
+      var skuId = parts[0];
+      var common = (parts[1] || '').split('\t');
+      pipeline = pipeline.then(function () {
+        overlay.update(idx + 1, lines.length, skuId);
+        return fetchInventoryAllPages(skuId).then(function (entries) {
+          entries.forEach(function (entry) {
+            rawRecords.push({ groupNo: common[0], rest: common.slice(1), zone: entry.zone, qty: entry.qty });
+          });
+        }).catch(function (err) {
+          console.error('skuId=' + skuId + ' 재고 조회 실패:', err);
+        }).then(function () { return sleep(CONFIG.DELAY_MS); });
+      });
+    });
+
+    return pipeline.then(function () {
+      overlay.remove();
+      if (rawRecords.length === 0) {
+        alert('수집된 데이터가 없습니다. (수량이 0이거나 일치하는 항목이 없음)');
+        return;
+      }
+      var aggregated = {};
+      rawRecords.forEach(function (rec) {
+        var key = rec.groupNo + '_' + rec.zone;
+        if (!aggregated[key]) aggregated[key] = { groupNo: rec.groupNo, rest: rec.rest, zone: rec.zone, qty: 0 };
+        aggregated[key].qty += rec.qty;
+      });
+      var items = Object.keys(aggregated).map(function (k) { return aggregated[k]; });
+      items.sort(function (a, b) { return a.zone.localeCompare(b.zone, undefined, { numeric: true, sensitivity: 'base' }); });
+      var rows = items.map(function (item) {
+        var rest = item.rest.map(function (val, idx) {
+          if (idx === 0 || idx === 1) return String(val).split(' ')[0];
+          return val;
+        });
+        return [item.groupNo].concat(rest).concat([item.zone, item.qty]);
+      });
+      renderPopup(rows);
+    });
+  }
+
+  function main() {
+    var task = document.querySelector('#' + CONFIG.LIST_CONTAINER_ID) ? runStep1() : runStep2();
+    if (task && task.catch) {
+      task.catch(function (err) {
+        console.error(err);
+        alert('오류 발생: ' + err.message);
+      });
+    }
+  }
+
+  main();
 })();
