@@ -83,9 +83,28 @@
     return lines.join('\n');
   }
 
+  function showToast(message) {
+    var toast = document.createElement('div');
+    toast.textContent = message;
+    toast.style.cssText = 'position:fixed;top:16px;right:16px;z-index:2147483647;background:#0f172a;color:#f1f5f9;' +
+      'padding:14px 18px;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,0.35);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;' +
+      'font-size:14px;line-height:1.5;max-width:340px;white-space:pre-line;opacity:0;transform:translateY(-8px);' +
+      'transition:opacity 0.25s ease,transform 0.25s ease;';
+    document.body.appendChild(toast);
+    requestAnimationFrame(function () {
+      toast.style.opacity = '1';
+      toast.style.transform = 'translateY(0)';
+    });
+    setTimeout(function () {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(-8px)';
+      setTimeout(function () { toast.remove(); }, 300);
+    }, 4500);
+  }
+
   function renderPopup(rows) {
     var tsv = buildTsv(rows);
-    var win = window.open('', '_blank', 'width=900,height=600');
+    var win = window.open('', '_blank', 'width=960,height=640');
     if (!win) {
       alert('팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.');
       return;
@@ -96,25 +115,72 @@
     var headHtml = HEADERS.map(function (h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('');
     var html = '<!doctype html><html><head><meta charset="utf-8"><title>반품 데이터 수집 결과</title>' +
       '<style>' +
-      'body{font-family:sans-serif;margin:12px;}' +
-      'textarea{width:100%;height:160px;box-sizing:border-box;margin-bottom:8px;}' +
-      'table{border-collapse:collapse;width:100%;font-size:12px;}' +
-      'th,td{border:1px solid #ccc;padding:4px 6px;text-align:left;white-space:nowrap;}' +
-      'th{background:#f2f2f2;}' +
-      'button{margin-bottom:8px;padding:6px 12px;cursor:pointer;}' +
+      ':root{color-scheme:light dark;}' +
+      '*{box-sizing:border-box;}' +
+      'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;padding:20px;' +
+      'background:#f1f5f9;color:#0f172a;}' +
+      '.card{background:#ffffff;border-radius:14px;box-shadow:0 4px 16px rgba(15,23,42,0.08);overflow:hidden;' +
+      'border:1px solid #e2e8f0;}' +
+      '.header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;' +
+      'border-bottom:1px solid #e2e8f0;flex-wrap:wrap;gap:12px;}' +
+      '.header h1{font-size:17px;margin:0;display:flex;align-items:center;gap:10px;}' +
+      '.badge{background:#2563eb;color:#fff;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;}' +
+      '.actions{display:flex;gap:8px;}' +
+      'button{-webkit-appearance:none;appearance:none;border:none;border-radius:8px;padding:8px 16px;' +
+      'font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:background 0.15s ease;}' +
+      '.btn-primary{background:#2563eb;color:#fff;}' +
+      '.btn-primary:hover{background:#1d4ed8;}' +
+      '.btn-secondary{background:#fff;color:#334155;border:1px solid #cbd5e1;}' +
+      '.btn-secondary:hover{background:#f8fafc;}' +
+      '.table-wrap{max-height:440px;overflow:auto;}' +
+      'table{border-collapse:collapse;width:100%;font-size:13px;}' +
+      'thead th{position:sticky;top:0;background:#eef2ff;color:#334155;text-align:left;padding:10px 12px;' +
+      'border-bottom:1px solid #e2e8f0;white-space:nowrap;font-weight:600;}' +
+      'tbody td{padding:8px 12px;border-bottom:1px solid #f1f5f9;white-space:nowrap;}' +
+      'tbody tr:nth-child(even){background:#f8fafc;}' +
+      'tbody tr:hover{background:#eff6ff;}' +
+      'td:last-child,th:last-child{text-align:right;}' +
+      'details{margin:14px 20px 18px;}' +
+      'summary{cursor:pointer;font-size:13px;color:#475569;user-select:none;}' +
+      'textarea{width:100%;height:140px;margin-top:8px;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;' +
+      'font-size:12px;padding:10px;border-radius:8px;border:1px solid #cbd5e1;resize:vertical;}' +
+      '@media (prefers-color-scheme: dark){' +
+      'body{background:#0b1220;color:#e2e8f0;}' +
+      '.card{background:#111827;border-color:#1f2937;}' +
+      '.header{border-color:#1f2937;}' +
+      'thead th{background:#1e293b;color:#cbd5e1;border-color:#1f2937;}' +
+      'tbody td{border-color:#1f2937;}' +
+      'tbody tr:nth-child(even){background:#161f2e;}' +
+      'tbody tr:hover{background:#1e2b40;}' +
+      '.btn-secondary{background:#111827;color:#e2e8f0;border-color:#334155;}' +
+      '.btn-secondary:hover{background:#1a2333;}' +
+      'summary{color:#94a3b8;}' +
+      'textarea{background:#0b1220;color:#e2e8f0;border-color:#334155;}' +
+      '}' +
       '</style></head><body>' +
-      '<div>총 ' + rows.length + '건 (엑셀에 붙여넣으려면 아래 텍스트 전체 선택 후 복사, 또는 복사 버튼 클릭)</div>' +
-      '<button id="copyBtn">복사</button>' +
-      '<textarea id="tsvArea" readonly></textarea>' +
+      '<div class="card">' +
+      '<div class="header">' +
+      '<h1>반품 데이터 수집 결과 <span class="badge">' + rows.length + '건</span></h1>' +
+      '<div class="actions">' +
+      '<button id="copyBtn" class="btn-primary">📋 복사</button>' +
+      '<button id="closeBtn" class="btn-secondary">닫기</button>' +
+      '</div></div>' +
+      '<div class="table-wrap">' +
       '<table><thead><tr>' + headHtml + '</tr></thead><tbody>' + tableRowsHtml + '</tbody></table>' +
+      '</div>' +
+      '<details><summary>원본 데이터 (TSV) 보기</summary>' +
+      '<textarea id="tsvArea" readonly></textarea>' +
+      '</details>' +
+      '</div>' +
       '</body></html>';
     win.document.open();
     win.document.write(html);
     win.document.close();
     var area = win.document.getElementById('tsvArea');
     area.value = tsv;
-    area.focus();
-    area.select();
+    win.document.getElementById('closeBtn').addEventListener('click', function () {
+      win.close();
+    });
     win.document.getElementById('copyBtn').addEventListener('click', function () {
       if (win.navigator.clipboard && win.navigator.clipboard.writeText) {
         win.navigator.clipboard.writeText(tsv).then(function () {
@@ -305,7 +371,7 @@
         return;
       }
       win.name = payload;
-      alert('데이터 수집 완료 (' + lines.length + '건)! 새 창이 뜨면 그 창에서 이 북마크릿을 한 번 더 눌러주세요.');
+      showToast('✅ ' + lines.length + '건 수집 완료\n새 탭에서 이 북마크릿을 한 번 더 눌러주세요.');
     });
   }
 
