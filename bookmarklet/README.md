@@ -9,9 +9,14 @@
 
 ## 설치
 
-1. `node bookmarklet/build.js` 실행
-2. 콘솔에 출력되는 `javascript:...` 문자열을 복사 (또는 `bookmarklet/dist/bookmarklet.url.txt` 내용을 복사)
-3. 브라우저에서 새 북마크를 만들고 URL 칸에 붙여넣기 (이름 예: "쿠팡 반품 스캔")
+Node.js 설치 없이 브라우저만으로 설치할 수 있습니다 (`bookmarklet/builder.html` 이용):
+
+1. `bookmarklet/builder.html` 파일을 다운로드해서 더블클릭(또는 브라우저에 드래그)으로 열기 — 인터넷 연결이나 서버, Node 설치 전혀 필요 없음
+2. `bookmarklet/src/bookmarklet.js`의 전체 내용을 복사해서 "원본 JS 코드" 칸에 붙여넣기
+3. "생성하기" 클릭
+4. 나온 "🔖 이 링크를 북마크바로 드래그하세요" 링크를 브라우저 북마크바로 드래그 (또는 아래 텍스트를 복사해서 새 북마크의 URL 칸에 붙여넣기)
+
+(참고: 저장소에는 Node.js로 미리 빌드해둔 `bookmarklet/dist/bookmarklet.url.txt`도 커밋되어 있으니, 코드를 직접 수정할 게 아니라면 이 파일 내용을 그대로 복사해 써도 됩니다.)
 
 ## 사용법
 
@@ -49,11 +54,11 @@
 
 이 저장소 안에서는 실제 쿠팡 사이트에 접근할 수 없어 자동 테스트가 불가능합니다. 실제 환경에서 아래 순서로 확인하세요.
 
-1. `node bookmarklet/build.js`가 에러 없이 실행되고 `javascript:` URI가 생성되는지 확인
+1. `bookmarklet/builder.html`을 열어 소스를 붙여넣고 "생성하기"를 눌렀을 때 에러 없이 `javascript:` 링크가 나오는지 확인 (또는 Node이 있다면 `node bookmarklet/build.js`)
 2. 목록 페이지에서 콘솔을 열어둔 채로 북마크릿 실행 → 행 1개만 먼저 테스트
-3. "데이터 수집 완료" 알림이 뜨고 새 탭이 열리는지 확인. 안 뜨면 콘솔에서 어느 링크 처리 중 실패했는지(`링크 처리 실패:` 로그) 확인
+3. "N건 수집 완료" 토스트가 뜨고 새 탭이 열리는지 확인. 안 뜨면 콘솔에서 어느 링크 처리 중 실패했는지(`링크 처리 실패:` 로그) 확인
 4. 새 탭에서 콘솔을 열어둔 채로 북마크릿 재실행 → 진행률 오버레이와 함께 여러 `page` 요청이 순차적으로 나가는지 확인
 5. "수집된 데이터가 없습니다" 알림이 뜨면: 집품 상태 필터에 걸리는지, 혹은 재고 API 응답 구조가 예상과 다른지(`skuId=... 재고 조회 실패:` 콘솔 로그) 확인
 6. 결과 팝업의 헤더가 9개 컬럼과 맞는지, 2~3건 정도 원본 페이지와 대조해서 값이 맞는지 확인
 7. 엑셀/구글시트에 붙여넣어 컬럼이 깨지지 않는지 확인
-8. 컬럼 값이 뒤섞여 보이면 `CONFIG`나 `scrapeCommonData`/`scrapeSkuIds`의 인덱스/조건을 조정하고 `node bookmarklet/build.js`로 재빌드
+8. 컬럼 값이 뒤섞여 보이면 `CONFIG`나 `scrapeCommonData`/`scrapeSkuIds`의 인덱스/조건을 조정하고 `bookmarklet/builder.html`(또는 `node bookmarklet/build.js`)로 재빌드

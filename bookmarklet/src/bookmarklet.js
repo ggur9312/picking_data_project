@@ -113,7 +113,7 @@
       return '<tr>' + r.map(function (v) { return '<td>' + escapeHtml(v) + '</td>'; }).join('') + '</tr>';
     }).join('');
     var headHtml = HEADERS.map(function (h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('');
-    var html = '<!doctype html><html><head><meta charset="utf-8"><title>반품 데이터 수집 결과</title>' +
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>데이터 수집 결과</title>' +
       '<style>' +
       ':root{color-scheme:light dark;}' +
       '*{box-sizing:border-box;}' +
@@ -160,7 +160,7 @@
       '</style></head><body>' +
       '<div class="card">' +
       '<div class="header">' +
-      '<h1>반품 데이터 수집 결과 <span class="badge">' + rows.length + '건</span></h1>' +
+      '<h1>데이터 수집 결과 <span class="badge">' + rows.length + '건</span></h1>' +
       '<div class="actions">' +
       '<button id="copyBtn" class="btn-primary">📋 복사</button>' +
       '<button id="closeBtn" class="btn-secondary">닫기</button>' +
@@ -343,7 +343,7 @@
       return;
     }
 
-    var overlay = createProgressOverlay('1단계: 반품 정보 수집 중');
+    var overlay = createProgressOverlay('데이터 수집중');
     var lines = [];
     var pipeline = Promise.resolve();
     links.forEach(function (link, idx) {
@@ -423,7 +423,7 @@
       return;
     }
 
-    var overlay = createProgressOverlay('2단계: 재고 매칭 스캔 중');
+    var overlay = createProgressOverlay('데이터 수집중');
     var rawRecords = [];
     var pipeline = Promise.resolve();
     lines.forEach(function (line, idx) {
