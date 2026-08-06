@@ -30,6 +30,8 @@
     MAX_LIST_PAGES: 200,
     MAX_PAYLOAD_CHARS: 1500000,
     CONFIRM_LINK_THRESHOLD: 50,
+    ETA_MIN_SAMPLES: 3,
+    STEP2_NOTICE_MIN_SEC: 30,
     ITEM_LIST_URL: function (orderId) {
       return 'https://inbound.coupang.com/vendor-return/order/item/paging?page=0&size=1000&pageSize=1000&isVirtualVendorReturn=false&vendorReturnOrderId=' +
         encodeURIComponent(orderId) + '&orderItemSearchStatus=';
@@ -669,13 +671,32 @@
     var bar = modal.query('[data-cpm-bar]');
     var txt = modal.query('[data-cpm-txt]');
 
+    // 남은 시간은 추측 상수가 아니라 지금까지의 실제 처리 속도로 계산합니다.
+    // 호출부가 처리 "직전"에 update(idx + 1, ...) 을 부르므로 완료 건수는 current - 1 입니다.
+    var startedAt = 0;
+
+    function etaText(current, total) {
+      var done = current - 1;
+      if (done < CONFIG.ETA_MIN_SAMPLES || done >= total) return '';
+      var elapsed = (Date.now() - startedAt) / 1000;
+      if (elapsed <= 0) return '';
+      var remaining = (elapsed / done) * (total - done);
+      if (!isFinite(remaining) || remaining <= 0) return '';
+      return '\n남은 시간 약 ' + formatDuration(remaining);
+    }
+
     return {
       update: function (current, total, label) {
         if (cancelled) return;
+        if (!startedAt) startedAt = Date.now();
         var pct = total > 0 ? Math.floor((current / total) * 100) : 0;
         bar.className = 'cpm-bar';
         bar.style.width = pct + '%';
-        txt.textContent = '진행률: ' + pct + '% (' + current + '/' + total + ')\n현재 처리: ' + label;
+        txt.textContent = '진행률: ' + pct + '% (' + current + '/' + total + ')' +
+          etaText(current, total) + '\n현재 처리: ' + label;
+      },
+      elapsedSeconds: function () {
+        return startedAt ? (Date.now() - startedAt) / 1000 : 0;
       },
       status: function (label) {
         if (cancelled) return;
@@ -959,17 +980,31 @@
   function confirmWorkload(links) {
     if (links.length < CONFIG.CONFIRM_LINK_THRESHOLD) return Promise.resolve(true);
     var estimate = links.length * (CONFIG.DELAY_MS + 700) / 1000;
-    return showConfirm(links.length + '건을 처리합니다.\n예상 소요 시간은 약 ' + formatDuration(estimate) + '입니다.\n\n진행하는 동안 이 탭을 닫거나 이동하지 마세요.\n계속할까요?', '계속 진행', '취소');
+    return showConfirm(links.length + '건을 처리합니다.\n1단계 예상 소요 시간은 약 ' + formatDuration(estimate) + '입니다.\n(2단계 재고조회는 SKU 개수만큼 추가로 걸립니다)\n\n진행하는 동안 이 탭을 닫거나 이동하지 마세요.\n계속할까요?', '계속 진행', '취소');
   }
 
-  function openInventoryTab(payload, count) {
+  // 1단계는 링크당 요청 2개 + 지연, 2단계는 SKU당 요청 1개 + 지연입니다.
+  // 1단계에서 실제로 걸린 시간에서 요청 1건의 비용을 역산해 2단계를 추정하면,
+  // 새로운 추측 상수를 만들지 않고도 그 환경의 실제 망 속도가 반영됩니다.
+  function estimateStep2Seconds(skuCount, step1Seconds, linkCount) {
+    if (!skuCount || !step1Seconds || !linkCount) return 0;
+    var delay = CONFIG.DELAY_MS / 1000;
+    var perRequest = (step1Seconds / linkCount - delay) / 2;
+    if (!isFinite(perRequest) || perRequest < 0) perRequest = 0;
+    return skuCount * (perRequest + delay);
+  }
+
+  function openInventoryTab(payload, count, step2Seconds) {
     var winName = 'coupangInv_' + Date.now();
     var win = window.open(CONFIG.INVENTORY_PAGE_URL, winName);
     if (!win) {
       return showAlert('팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.');
     }
     win.name = payload;
-    showToast('✅ ' + count + '건 수집 완료\n새 탭에서 이 북마크릿을 한 번 더 눌러주세요.');
+    var notice = step2Seconds >= CONFIG.STEP2_NOTICE_MIN_SEC
+      ? '\n2단계 예상 약 ' + formatDuration(step2Seconds)
+      : '';
+    showToast('✅ ' + count + '건 수집 완료' + notice + '\n새 탭에서 이 북마크릿을 한 번 더 눌러주세요.');
     return Promise.resolve();
   }
 
@@ -999,6 +1034,7 @@
         showToast('수집을 취소했습니다.');
         return null;
       }
+      var step2 = estimateStep2Seconds(lines.length, overlay.elapsedSeconds(), links.length);
       overlay.remove();
       if (lines.length === 0) {
         return showAlert('수집된 데이터가 없습니다. (집품중/집품대기 상태의 아이템이 없을 수 있습니다)');
@@ -1006,9 +1042,9 @@
       var payload = CONFIG.PAYLOAD_PREFIX + lines.join('\n');
       if (payload.length > CONFIG.MAX_PAYLOAD_CHARS) {
         return showConfirm('수집 데이터가 매우 큽니다 (' + payload.length + '자).\n브라우저에 따라 다음 탭으로 전달되지 않을 수 있습니다.\n\n계속할까요?', '계속 진행', '취소')
-          .then(function (ok) { return ok ? openInventoryTab(payload, lines.length) : null; });
+          .then(function (ok) { return ok ? openInventoryTab(payload, lines.length, step2) : null; });
       }
-      return openInventoryTab(payload, lines.length);
+      return openInventoryTab(payload, lines.length, step2);
     }).catch(function (err) {
       overlay.remove();
       if (overlay.isCancelled() || isAbortError(err)) {
