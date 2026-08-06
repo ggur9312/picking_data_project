@@ -99,12 +99,13 @@
 
   function showToast(message) {
     var toast = document.createElement('div');
+    toast.className = 'cpm-toast';
     toast.textContent = message;
     toast.style.cssText = 'position:fixed;top:16px;right:16px;z-index:2147483647;background:#0f172a;color:#f1f5f9;' +
       'padding:14px 18px;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,0.35);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;' +
       'font-size:16px;line-height:1.5;max-width:380px;white-space:pre-line;opacity:0;transform:translateY(-8px);' +
       'transition:opacity 0.25s ease,transform 0.25s ease;';
-    document.body.appendChild(toast);
+    getModalRoot().appendChild(toast);
     requestAnimationFrame(function () {
       toast.style.opacity = '1';
       toast.style.transform = 'translateY(0)';
@@ -116,20 +117,20 @@
     }, 4500);
   }
 
-  var MODAL_STYLE_ID = 'cpm-style';
+  var MODAL_HOST_ID = 'cpm-ui-root';
 
+  // 모달은 Shadow DOM 안에서 렌더되므로 호스트 페이지 CSS가 선택자로 침투할 수
+  // 없습니다. 다만 상속되는 속성(font-size, color, line-height 등)은 shadow 경계를
+  // 넘어오므로 :host 에서 끊고, 남은 리셋은 브라우저 기본 스타일 정리용뿐입니다.
   var MODAL_CSS = [
-    '.cpm-root{position:fixed;top:0;left:0;width:100%;height:100%;z-index:2147483600;display:flex;',
+    ':host{all:initial;display:block;}',
+    '.cpm-root{position:fixed;top:0;left:0;width:100%;height:100%;box-sizing:border-box;',
+    'z-index:2147483600;display:flex;',
     'align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,0.85);',
     'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:16px;',
     'line-height:1.5;color:#0f172a;font-weight:400;text-align:left;letter-spacing:normal;}',
-    '.cpm-root *{margin:0;padding:0;border:0;outline:0;background:transparent;color:inherit;font:inherit;',
-    'font-style:normal;text-align:left;text-decoration:none;text-transform:none;text-indent:0;',
-    'letter-spacing:normal;word-spacing:normal;list-style:none;box-shadow:none;float:none;clear:none;',
-    'position:static;top:auto;right:auto;bottom:auto;left:auto;width:auto;height:auto;min-width:0;',
-    'min-height:0;max-width:none;max-height:none;opacity:1;visibility:visible;transform:none;',
-    'vertical-align:baseline;box-sizing:border-box;border-radius:0;border-collapse:collapse;',
-    'border-spacing:0;white-space:normal;}',
+    '.cpm-root *{margin:0;padding:0;border:0;box-sizing:border-box;font:inherit;',
+    'list-style:none;text-align:left;}',
     '.cpm-card{background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;',
     'box-shadow:0 16px 40px rgba(15,23,42,0.35);width:1040px;max-width:100%;max-height:86vh;',
     'display:flex;flex-direction:column;overflow:hidden;}',
@@ -143,6 +144,7 @@
     '.cpm-msg{margin:0;white-space:pre-line;color:#334155;}',
     '.cpm-btn{-webkit-appearance:none;appearance:none;border:none;border-radius:8px;padding:9px 18px;',
     'font-size:15px;font-weight:600;cursor:pointer;line-height:1.2;transition:background 0.15s ease;}',
+    '.cpm-btn:focus-visible{outline:2px solid #93c5fd;outline-offset:2px;}',
     '.cpm-btn-primary{background:#2563eb;color:#ffffff;}',
     '.cpm-btn-primary:hover{background:#1d4ed8;}',
     '.cpm-btn-secondary{background:#ffffff;color:#334155;border:1px solid #cbd5e1;}',
@@ -162,11 +164,7 @@
     '.cpm-hint{font-size:14px;color:#64748b;margin-top:8px;}',
     '.cpm-hint code{background:#e2e8f0;color:#334155;border-radius:4px;padding:1px 5px;',
     'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;}',
-    '.cpm-table{display:table;border-collapse:collapse;width:100%;min-width:max-content;font-size:15px;}',
-    '.cpm-table thead{display:table-header-group;}',
-    '.cpm-table tbody{display:table-row-group;}',
-    '.cpm-table tr{display:table-row;}',
-    '.cpm-table th,.cpm-table td{display:table-cell;}',
+    '.cpm-table{border-collapse:collapse;width:100%;min-width:max-content;font-size:15px;}',
     '.cpm-table thead th{position:sticky;top:0;background:#eef2ff;color:#334155;text-align:left;',
     'padding:12px 14px;border-bottom:1px solid #e2e8f0;white-space:nowrap;font-weight:600;z-index:1;}',
     '.cpm-table tbody td{padding:10px 14px;border-bottom:1px solid #f1f5f9;white-space:nowrap;color:#0f172a;}',
@@ -230,16 +228,63 @@
     }
   }
 
-  function injectModalStyles() {
-    if (document.getElementById(MODAL_STYLE_ID)) return;
+  // 호스트가 조상에 zoom 이나 transform:scale 을 걸어두면 모달도 같이 확대/축소됩니다
+  // (Shadow DOM 은 스타일 침투만 막을 뿐 이런 레이아웃 배율은 그대로 통과시킵니다).
+  // 원인을 추측하는 대신 알려진 높이의 프로브를 실제로 그려서 재고, 어긋난 만큼
+  // 역배율을 걸어 상쇄합니다. getBoundingClientRect 는 zoom 과 transform 을 모두
+  // 반영하므로 원인이 무엇이든 잡힙니다.
+  function measureHostScale(container) {
+    var probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:100px;height:100px;' +
+      'visibility:hidden;pointer-events:none;';
+    container.appendChild(probe);
+    var rect = probe.getBoundingClientRect();
+    probe.remove();
+    var scale = rect.height / 100;
+    if (!isFinite(scale) || scale <= 0) return 1;
+    return scale;
+  }
+
+  function applyScaleCompensation(hostEl, container) {
+    var scale = measureHostScale(container);
+    if (Math.abs(scale - 1) < 0.02) return;
+    if (scale < 0.5 || scale > 2) {
+      console.warn('[북마크릿] 호스트 배율 보정 범위 밖:', scale);
+      return;
+    }
+    console.log('[북마크릿] 호스트 배율:', scale, '-> 역배율 적용:', 1 / scale);
+    hostEl.style.zoom = String(1 / scale);
+  }
+
+  var modalRoot = null;
+
+  // 모달을 body 가 아니라 documentElement(<html>)에 붙입니다. body 나 그 하위 래퍼에
+  // 걸린 zoom/transform 을 벗어나고, transform 이 걸린 조상 안에서 position:fixed 가
+  // 그 조상 기준으로 잡히는 문제도 함께 피합니다.
+  function getModalRoot() {
+    if (modalRoot) return modalRoot;
+    // 북마크릿을 같은 페이지에서 여러 번 눌러도 호스트 엘리먼트가 쌓이지 않게 재사용
+    var existing = document.getElementById(MODAL_HOST_ID);
+    if (existing) {
+      modalRoot = existing.shadowRoot || existing;
+      return modalRoot;
+    }
+    var hostEl = document.createElement('div');
+    hostEl.id = MODAL_HOST_ID;
+    hostEl.style.cssText = 'all:initial;display:block;';
+    (document.documentElement || document.body).appendChild(hostEl);
+
+    var container = hostEl.attachShadow ? hostEl.attachShadow({ mode: 'open' }) : hostEl;
     var style = document.createElement('style');
-    style.id = MODAL_STYLE_ID;
     style.textContent = MODAL_CSS;
-    (document.head || document.documentElement).appendChild(style);
+    container.appendChild(style);
+
+    applyScaleCompensation(hostEl, container);
+    modalRoot = container;
+    return modalRoot;
   }
 
   function openModal(options) {
-    injectModalStyles();
     var opts = options || {};
     var buttons = opts.buttons || [];
     var dismissible = opts.dismissible !== false;
@@ -262,7 +307,7 @@
       (buttonsHtml ? '<div class="cpm-footer">' + buttonsHtml + '</div>' : '');
 
     root.appendChild(card);
-    document.body.appendChild(root);
+    getModalRoot().appendChild(root);
     lockScroll();
 
     var closed = false;
@@ -276,7 +321,7 @@
     }
 
     function isTopMost() {
-      var all = document.querySelectorAll('.cpm-root');
+      var all = getModalRoot().querySelectorAll('.cpm-root');
       return all.length === 0 || all[all.length - 1] === root;
     }
 
@@ -483,23 +528,34 @@
       }
       showToast(message);
     }
+    // execCommand('copy')는 Shadow DOM 안의 선택 영역을 복사하지 못하는 브라우저가
+    // 있으므로, 폴백은 light DOM 에 임시 textarea 를 만들어서 복사합니다.
     function execCommandFallback() {
-      if (!textarea) {
-        selectFallback('자동 복사에 실패했습니다.\n"원본 데이터 (TSV) 보기"를 펼쳐 직접 복사해 주세요.');
-        return;
-      }
-      var details = textarea.closest ? textarea.closest('details') : null;
-      if (details) details.open = true;
-      textarea.focus();
-      textarea.select();
+      var temp = document.createElement('textarea');
+      temp.value = text;
+      temp.setAttribute('readonly', 'readonly');
+      temp.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0;';
+      document.body.appendChild(temp);
       var ok = false;
       try {
+        temp.select();
+        temp.setSelectionRange(0, temp.value.length);
         ok = document.execCommand('copy');
       } catch (err) {
         ok = false;
       }
-      if (ok) showToast('✅ 클립보드에 복사되었습니다.');
-      else selectFallback('자동 복사에 실패했습니다.\n텍스트가 선택되어 있으니 Ctrl+C로 복사하세요.');
+      temp.remove();
+      if (ok) {
+        showToast('✅ 클립보드에 복사되었습니다.');
+        return;
+      }
+      if (textarea) {
+        var details = textarea.closest ? textarea.closest('details') : null;
+        if (details) details.open = true;
+        selectFallback('자동 복사에 실패했습니다.\n텍스트가 선택되어 있으니 Ctrl+C로 복사하세요.');
+      } else {
+        selectFallback('자동 복사에 실패했습니다.\n"원본 데이터 (TSV) 보기"를 펼쳐 직접 복사해 주세요.');
+      }
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () {
