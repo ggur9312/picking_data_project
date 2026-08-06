@@ -375,6 +375,37 @@
     });
   }
 
+  function showSessionExpiredModal(extraMessage) {
+    var message = '로그인이 풀려서 수집을 중단했습니다.\n지금까지 모은 데이터는 저장하지 않았습니다.\n\n' +
+      '다시 로그인한 뒤 북마크릿을 실행해 주세요.' + (extraMessage ? '\n' + extraMessage : '');
+    return new Promise(function (resolve) {
+      var settled = false;
+      function done() {
+        if (settled) return;
+        settled = true;
+        resolve(null);
+      }
+      openModal({
+        title: '로그인이 필요합니다',
+        size: 'sm',
+        bodyHtml: '<p class="cpm-msg">' + escapeHtml(message) + '</p>',
+        buttons: [
+          { label: '닫기', onClick: function (m) { m.close(); done(); } },
+          {
+            label: '로그인 페이지 열기',
+            primary: true,
+            onClick: function (m) {
+              window.open(location.origin, '_blank');
+              m.close();
+              done();
+            }
+          }
+        ],
+        onDismiss: done
+      });
+    });
+  }
+
   var SCOPE_HINT = {
     page: '행 번호는 지금 화면에 보이는 행 기준입니다.',
     all: '행 번호는 전체 페이지를 합친 순서(1페이지 1행부터) 기준입니다.'
@@ -579,10 +610,50 @@
     return !!err && (err.name === 'AbortError' || err.code === 20);
   }
 
+  function sessionError(url) {
+    var err = new Error('로그인이 풀렸습니다 (세션 만료): ' + url);
+    err.sessionExpired = true;
+    return err;
+  }
+
+  function isSessionExpired(err) {
+    return !!err && err.sessionExpired === true;
+  }
+
+  // 세션이 끊기면 서버는 보통 302로 로그인 페이지에 보내는데, fetch 는 기본이
+  // redirect:'follow' 라 최종 응답이 "200 + 로그인 HTML" 로 돌아옵니다. resp.ok 만
+  // 봐서는 정상 응답과 구분되지 않으므로 리다이렉트 여부와 상태 코드를 함께 봅니다.
+  // 경로 이름(/login 등)에 의존하지 않아 어드민 구조가 바뀌어도 동작하고,
+  // 슬래시 정규화처럼 같은 경로로 되돌아오는 리다이렉트에는 반응하지 않습니다.
+  function checkSession(resp, requestedUrl) {
+    if (resp.status === 401 || resp.status === 403) throw sessionError(requestedUrl);
+    if (resp.redirected) {
+      var from = '';
+      var to = '';
+      try {
+        from = new URL(requestedUrl, document.baseURI).pathname;
+        to = new URL(resp.url).pathname;
+      } catch (err) {
+        return resp;
+      }
+      if (from && to && from !== to) throw sessionError(requestedUrl);
+    }
+    return resp;
+  }
+
+  // 리다이렉트 없이 로그인 화면을 그대로 렌더(forward)하는 서버도 있습니다.
+  function looksLikeLoginHtml(text) {
+    return /<input[^>]+type\s*=\s*["']?password/i.test(text);
+  }
+
   function fetchText(url, signal) {
     return fetch(url, { credentials: CONFIG.FETCH_CREDENTIALS, signal: signal }).then(function (resp) {
+      checkSession(resp, url);
       if (!resp.ok) throw new Error('요청 실패 (' + resp.status + '): ' + url);
       return resp.text();
+    }).then(function (text) {
+      if (looksLikeLoginHtml(text)) throw sessionError(url);
+      return text;
     });
   }
 
@@ -783,6 +854,7 @@
         return null;
       }
       overlay.remove();
+      if (isSessionExpired(err)) return showSessionExpiredModal();
       console.error('목록 전체 조회 실패:', err);
       return showAlert('목록 전체 조회에 실패했습니다.\n' + err.message + '\n\n"현재 페이지만" 모드를 사용해 주세요.')
         .then(function () { return null; });
@@ -825,6 +897,7 @@
         return processLink(link, overlay.signal).then(function (newLines) {
           lines = lines.concat(newLines);
         }).catch(function (err) {
+          if (isSessionExpired(err)) throw err;
           if (overlay.isCancelled() || isAbortError(err)) return;
           console.error('링크 처리 실패:', link, err);
         }).then(function () {
@@ -855,6 +928,7 @@
         showToast('수집을 취소했습니다.');
         return null;
       }
+      if (isSessionExpired(err)) return showSessionExpiredModal();
       throw err;
     });
   }
@@ -911,9 +985,14 @@
   function fetchInventoryAllPages(skuId, signal) {
     var results = [];
     function loop(page) {
-      return fetch(CONFIG.INVENTORY_SEARCH_URL(skuId, page), { credentials: 'same-origin', signal: signal }).then(function (resp) {
+      var url = CONFIG.INVENTORY_SEARCH_URL(skuId, page);
+      return fetch(url, { credentials: 'same-origin', signal: signal }).then(function (resp) {
+        checkSession(resp, url);
         if (!resp.ok) throw new Error('요청 실패 (' + resp.status + ')');
-        return resp.json();
+        return resp.text();
+      }).then(function (text) {
+        if (looksLikeLoginHtml(text)) throw sessionError(url);
+        return JSON.parse(text);
       }).then(function (json) {
         if (!json || !json.success || !json.result || !Array.isArray(json.result.content)) {
           return results;
@@ -947,12 +1026,21 @@
 
     var overlay = createProgressOverlay('데이터 수집중');
 
-    // 취소하면 수집 결과를 버리므로, 1단계부터 다시 하지 않아도 되도록
+    // 중단하면 수집 결과를 버리므로, 1단계부터 다시 하지 않아도 되도록
     // window.name 에 실려 온 원본 데이터를 되돌려 놓습니다.
-    function cancelledStep2() {
+    function restorePayload() {
       window.name = name;
+    }
+
+    function cancelledStep2() {
+      restorePayload();
       showToast('조회를 취소했습니다.\n이 탭에서 북마크릿을 다시 누르면 처음부터 조회합니다.');
       return null;
+    }
+
+    function sessionExpiredStep2() {
+      restorePayload();
+      return showSessionExpiredModal('1단계 수집 결과는 이 탭에 남아 있으니, 로그인 후 여기서 북마크릿만 다시 누르면 됩니다.');
     }
 
     var rawRecords = [];
@@ -969,6 +1057,7 @@
             rawRecords.push({ groupNo: common[0], rest: common.slice(1), zone: entry.zone, qty: entry.qty });
           });
         }).catch(function (err) {
+          if (isSessionExpired(err)) throw err;
           if (overlay.isCancelled() || isAbortError(err)) return;
           console.error('skuId=' + skuId + ' 재고 조회 실패:', err);
         }).then(function () {
@@ -1004,6 +1093,7 @@
     }).catch(function (err) {
       overlay.remove();
       if (overlay.isCancelled() || isAbortError(err)) return cancelledStep2();
+      if (isSessionExpired(err)) return sessionExpiredStep2();
       throw err;
     });
   }
@@ -1012,8 +1102,9 @@
     var task = document.querySelector('#' + CONFIG.LIST_CONTAINER_ID) ? runStep1() : runStep2();
     if (task && task.catch) {
       task.catch(function (err) {
+        if (isSessionExpired(err)) return showSessionExpiredModal();
         console.error(err);
-        showAlert('오류 발생: ' + err.message);
+        return showAlert('오류 발생: ' + err.message);
       });
     }
   }
