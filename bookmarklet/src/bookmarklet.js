@@ -47,7 +47,7 @@
     PAYLOAD_PREFIX: 'manual_hold||'
   };
 
-  var HEADERS = ['그룹번호', '마감일자', '생성일자', '매입유형', '업체명', '상태', '운송타입', '존', '수량'];
+  var HEADERS = ['그룹번호', '마감일시', '생성일시', '매입유형', '업체명', '상태', '운송타입', '존', '수량'];
 
   function sleep(ms) {
     return new Promise(function (resolve) {
@@ -102,7 +102,7 @@
     toast.textContent = message;
     toast.style.cssText = 'position:fixed;top:16px;right:16px;z-index:2147483647;background:#0f172a;color:#f1f5f9;' +
       'padding:14px 18px;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,0.35);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;' +
-      'font-size:14px;line-height:1.5;max-width:340px;white-space:pre-line;opacity:0;transform:translateY(-8px);' +
+      'font-size:16px;line-height:1.5;max-width:380px;white-space:pre-line;opacity:0;transform:translateY(-8px);' +
       'transition:opacity 0.25s ease,transform 0.25s ease;';
     document.body.appendChild(toast);
     requestAnimationFrame(function () {
@@ -121,7 +121,7 @@
   var MODAL_CSS = [
     '.cpm-root{position:fixed;top:0;left:0;width:100%;height:100%;z-index:2147483600;display:flex;',
     'align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,0.85);',
-    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:14px;',
+    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:16px;',
     'line-height:1.5;color:#0f172a;font-weight:400;text-align:left;letter-spacing:normal;}',
     '.cpm-root *{margin:0;padding:0;border:0;outline:0;background:transparent;color:inherit;font:inherit;',
     'font-style:normal;text-align:left;text-decoration:none;text-transform:none;text-indent:0;',
@@ -131,60 +131,60 @@
     'vertical-align:baseline;box-sizing:border-box;border-radius:0;border-collapse:collapse;',
     'border-spacing:0;white-space:normal;}',
     '.cpm-card{background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;',
-    'box-shadow:0 16px 40px rgba(15,23,42,0.35);width:960px;max-width:100%;max-height:86vh;',
+    'box-shadow:0 16px 40px rgba(15,23,42,0.35);width:1040px;max-width:100%;max-height:86vh;',
     'display:flex;flex-direction:column;overflow:hidden;}',
-    '.cpm-card.cpm-sm{width:480px;}',
+    '.cpm-card.cpm-sm{width:540px;}',
     '.cpm-header{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #e2e8f0;flex:0 0 auto;}',
-    '.cpm-title{font-size:16px;font-weight:700;margin:0;color:#0f172a;}',
-    '.cpm-badge{background:#2563eb;color:#fff;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;}',
+    '.cpm-title{font-size:19px;font-weight:700;margin:0;color:#0f172a;}',
+    '.cpm-badge{background:#2563eb;color:#fff;font-size:14px;font-weight:600;padding:3px 10px;border-radius:999px;}',
     '.cpm-body{padding:18px 20px;overflow:auto;flex:1 1 auto;}',
     '.cpm-body.cpm-flush{padding:0;}',
     '.cpm-footer{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid #e2e8f0;flex:0 0 auto;}',
     '.cpm-msg{margin:0;white-space:pre-line;color:#334155;}',
     '.cpm-btn{-webkit-appearance:none;appearance:none;border:none;border-radius:8px;padding:9px 18px;',
-    'font-size:13px;font-weight:600;cursor:pointer;line-height:1.2;transition:background 0.15s ease;}',
+    'font-size:15px;font-weight:600;cursor:pointer;line-height:1.2;transition:background 0.15s ease;}',
     '.cpm-btn-primary{background:#2563eb;color:#ffffff;}',
     '.cpm-btn-primary:hover{background:#1d4ed8;}',
     '.cpm-btn-secondary{background:#ffffff;color:#334155;border:1px solid #cbd5e1;}',
     '.cpm-btn-secondary:hover{background:#f8fafc;}',
     '.cpm-field{margin-bottom:18px;}',
     '.cpm-field:last-child{margin-bottom:0;}',
-    '.cpm-label{font-size:12px;font-weight:700;color:#64748b;margin-bottom:8px;letter-spacing:0.02em;}',
+    '.cpm-label{font-size:14px;font-weight:700;color:#64748b;margin-bottom:8px;letter-spacing:0.02em;}',
     '.cpm-radio{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid #e2e8f0;',
     'border-radius:10px;margin-bottom:8px;cursor:pointer;background:#f8fafc;}',
     '.cpm-radio:hover{border-color:#93c5fd;}',
     '.cpm-radio input{margin:3px 0 0 0;flex:0 0 auto;}',
-    '.cpm-radio b{display:block;font-size:13px;color:#0f172a;font-weight:600;}',
-    '.cpm-radio small{display:block;font-size:12px;color:#64748b;margin-top:2px;}',
-    '.cpm-input{width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;',
+    '.cpm-radio b{display:block;font-size:15px;color:#0f172a;font-weight:600;}',
+    '.cpm-radio small{display:block;font-size:14px;color:#64748b;margin-top:2px;}',
+    '.cpm-input{width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;',
     'background:#ffffff;color:#0f172a;}',
     '.cpm-input:focus{outline:2px solid #93c5fd;outline-offset:-1px;}',
-    '.cpm-hint{font-size:12px;color:#64748b;margin-top:8px;}',
+    '.cpm-hint{font-size:14px;color:#64748b;margin-top:8px;}',
     '.cpm-hint code{background:#e2e8f0;color:#334155;border-radius:4px;padding:1px 5px;',
-    'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;}',
-    '.cpm-table{display:table;border-collapse:collapse;width:100%;font-size:13px;}',
+    'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;}',
+    '.cpm-table{display:table;border-collapse:collapse;width:100%;min-width:max-content;font-size:15px;}',
     '.cpm-table thead{display:table-header-group;}',
     '.cpm-table tbody{display:table-row-group;}',
     '.cpm-table tr{display:table-row;}',
     '.cpm-table th,.cpm-table td{display:table-cell;}',
     '.cpm-table thead th{position:sticky;top:0;background:#eef2ff;color:#334155;text-align:left;',
-    'padding:10px 12px;border-bottom:1px solid #e2e8f0;white-space:nowrap;font-weight:600;z-index:1;}',
-    '.cpm-table tbody td{padding:8px 12px;border-bottom:1px solid #f1f5f9;white-space:nowrap;color:#0f172a;}',
+    'padding:12px 14px;border-bottom:1px solid #e2e8f0;white-space:nowrap;font-weight:600;z-index:1;}',
+    '.cpm-table tbody td{padding:10px 14px;border-bottom:1px solid #f1f5f9;white-space:nowrap;color:#0f172a;}',
     '.cpm-table tbody tr:nth-child(even){background:#f8fafc;}',
     '.cpm-table tbody tr:hover{background:#eff6ff;}',
     '.cpm-table td:last-child,.cpm-table th:last-child{text-align:right;}',
     '.cpm-details{margin:14px 20px 18px;}',
-    '.cpm-details summary{cursor:pointer;font-size:13px;color:#475569;user-select:none;}',
+    '.cpm-details summary{cursor:pointer;font-size:15px;color:#475569;user-select:none;}',
     '.cpm-details summary::before{content:"\\25B8  ";}',
     '.cpm-details[open] summary::before{content:"\\25BE  ";}',
     '.cpm-textarea{width:100%;height:140px;margin-top:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;',
-    'font-size:12px;padding:10px;border-radius:8px;border:1px solid #cbd5e1;resize:vertical;',
+    'font-size:14px;padding:10px;border-radius:8px;border:1px solid #cbd5e1;resize:vertical;',
     'background:#ffffff;color:#0f172a;}',
     '.cpm-bar-track{background:#e2e8f0;border-radius:6px;height:14px;overflow:hidden;margin-bottom:12px;}',
     '.cpm-bar{background:linear-gradient(90deg,#38bdf8,#0284c7);height:100%;width:0%;transition:width 0.1s ease;}',
     '.cpm-bar-pulse{animation:cpm-pulse 1.1s ease-in-out infinite;}',
     '@keyframes cpm-pulse{0%,100%{opacity:0.35;}50%{opacity:1;}}',
-    '.cpm-progress-txt{font-size:13px;color:#475569;white-space:pre-line;word-break:break-all;}',
+    '.cpm-progress-txt{font-size:15px;color:#475569;white-space:pre-line;word-break:break-all;}',
     '@media (prefers-color-scheme: dark){',
     '.cpm-root{color:#e2e8f0;}',
     '.cpm-card{background:#111827;border-color:#1f2937;}',
@@ -282,7 +282,11 @@
 
     function onKeyDown(e) {
       if (closed || !isTopMost()) return;
-      if (e.key === 'Escape' && dismissible) {
+      if (e.key === 'Escape' && opts.onEscape) {
+        e.preventDefault();
+        e.stopPropagation();
+        opts.onEscape();
+      } else if (e.key === 'Escape' && dismissible) {
         e.preventDefault();
         e.stopPropagation();
         close();
@@ -513,46 +517,70 @@
     return modal;
   }
 
+  // 진행률 모달. 취소 버튼과 Esc 로 언제든 중단할 수 있고, 취소하면 진행 중인
+  // 요청을 AbortController 로 즉시 끊습니다. 배경 클릭으로는 닫히지 않습니다 —
+  // 오래 걸리는 작업이 오클릭 한 번에 날아가면 안 되기 때문입니다.
   function createProgressOverlay(title) {
-    injectModalStyles();
-    var overlay = document.createElement('div');
-    overlay.className = 'cpm-root';
-    var card = document.createElement('div');
-    card.className = 'cpm-card cpm-sm';
-    card.innerHTML = '<div class="cpm-header"><h2 class="cpm-title">' + escapeHtml(title) + '</h2></div>' +
-      '<div class="cpm-body">' +
-      '<div class="cpm-bar-track"><div class="cpm-bar" data-cpm-bar></div></div>' +
-      '<div class="cpm-progress-txt" data-cpm-txt>준비 중...</div>' +
-      '</div>';
-    overlay.appendChild(card);
-    document.body.appendChild(overlay);
-    lockScroll();
-    var bar = card.querySelector('[data-cpm-bar]');
-    var txt = card.querySelector('[data-cpm-txt]');
-    var removed = false;
+    var cancelled = false;
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var modal = null;
+
+    function cancel() {
+      if (cancelled) return;
+      cancelled = true;
+      if (controller) {
+        try {
+          controller.abort();
+        } catch (err) {
+          console.warn('요청 중단 실패:', err);
+        }
+      }
+      if (modal) modal.close();
+    }
+
+    modal = openModal({
+      title: title,
+      size: 'sm',
+      dismissible: false,
+      bodyHtml: '<div class="cpm-bar-track"><div class="cpm-bar" data-cpm-bar></div></div>' +
+        '<div class="cpm-progress-txt" data-cpm-txt>준비 중...</div>',
+      buttons: [{ label: '취소', onClick: cancel }],
+      onEscape: cancel
+    });
+
+    var bar = modal.query('[data-cpm-bar]');
+    var txt = modal.query('[data-cpm-txt]');
+
     return {
       update: function (current, total, label) {
+        if (cancelled) return;
         var pct = total > 0 ? Math.floor((current / total) * 100) : 0;
         bar.className = 'cpm-bar';
         bar.style.width = pct + '%';
         txt.textContent = '진행률: ' + pct + '% (' + current + '/' + total + ')\n현재 처리: ' + label;
       },
       status: function (label) {
+        if (cancelled) return;
         bar.className = 'cpm-bar cpm-bar-pulse';
         bar.style.width = '100%';
         txt.textContent = label;
       },
+      isCancelled: function () {
+        return cancelled;
+      },
+      signal: controller ? controller.signal : undefined,
       remove: function () {
-        if (removed) return;
-        removed = true;
-        overlay.remove();
-        unlockScroll();
+        modal.close();
       }
     };
   }
 
-  function fetchText(url) {
-    return fetch(url, { credentials: CONFIG.FETCH_CREDENTIALS }).then(function (resp) {
+  function isAbortError(err) {
+    return !!err && (err.name === 'AbortError' || err.code === 20);
+  }
+
+  function fetchText(url, signal) {
+    return fetch(url, { credentials: CONFIG.FETCH_CREDENTIALS, signal: signal }).then(function (resp) {
       if (!resp.ok) throw new Error('요청 실패 (' + resp.status + '): ' + url);
       return resp.text();
     });
@@ -628,8 +656,8 @@
     return results;
   }
 
-  function processLink(link) {
-    return fetchText(link).then(function (detailHtml) {
+  function processLink(link, signal) {
+    return fetchText(link, signal).then(function (detailHtml) {
       var detailRows = getDetailRows(detailHtml);
       var orderId = cellText(detailRows.row1, 2);
       if (!orderId) orderId = extractOrderIdFromUrl(link);
@@ -637,7 +665,7 @@
       if (!orderId) throw new Error('vendorReturnOrderId를 찾지 못함: ' + link);
       var common = scrapeCommonData(detailRows.row1, detailRows.row2);
       var commonStr = common.join('\t');
-      return fetchText(CONFIG.ITEM_LIST_URL(orderId)).then(function (itemHtml) {
+      return fetchText(CONFIG.ITEM_LIST_URL(orderId), signal).then(function (itemHtml) {
         var skuIds = scrapeSkuIds(itemHtml);
         return skuIds.map(function (skuId) { return skuId + '||' + commonStr; });
       });
@@ -700,9 +728,10 @@
     // 잘라서 주면 다음 페이지가 계속 나옵니다. "새 링크가 하나도 없는 페이지"를
     // 종료 조건으로 삼으면 두 경우 모두 같은 코드로 처리됩니다.
     function loop(page) {
+      if (overlay && overlay.isCancelled()) return Promise.resolve(hrefs);
       var url = CONFIG.LIST_PAGING_URL + '?' + params + '&page=' + page + '&size=' + CONFIG.LIST_FETCH_SIZE;
       if (overlay) overlay.status('목록 ' + (page + 1) + '페이지 조회 중...\n지금까지 ' + linkCount + '건');
-      return fetchText(url).then(function (html) {
+      return fetchText(url, overlay ? overlay.signal : undefined).then(function (html) {
         var found = extractRowHrefs(parseHtml(html));
         var pageHrefs = [];
         var newCount = 0;
@@ -732,6 +761,10 @@
   function collectAllPages(visibleCount) {
     var overlay = createProgressOverlay('목록 전체 페이지 수집중');
     return fetchAllListHrefs(overlay).then(function (hrefs) {
+      if (overlay.isCancelled()) {
+        showToast('조회를 취소했습니다.');
+        return null;
+      }
       overlay.remove();
       var found = hrefs.filter(function (h) { return h !== ''; }).length;
       if (found === 0) {
@@ -744,6 +777,11 @@
       }
       return hrefs;
     }).catch(function (err) {
+      if (overlay.isCancelled() || isAbortError(err)) {
+        overlay.remove();
+        showToast('조회를 취소했습니다.');
+        return null;
+      }
       overlay.remove();
       console.error('목록 전체 조회 실패:', err);
       return showAlert('목록 전체 조회에 실패했습니다.\n' + err.message + '\n\n"현재 페이지만" 모드를 사용해 주세요.')
@@ -782,16 +820,25 @@
     var pipeline = Promise.resolve();
     links.forEach(function (link, idx) {
       pipeline = pipeline.then(function () {
+        if (overlay.isCancelled()) return null;
         overlay.update(idx + 1, links.length, link);
-        return processLink(link).then(function (newLines) {
+        return processLink(link, overlay.signal).then(function (newLines) {
           lines = lines.concat(newLines);
         }).catch(function (err) {
+          if (overlay.isCancelled() || isAbortError(err)) return;
           console.error('링크 처리 실패:', link, err);
-        }).then(function () { return sleep(CONFIG.DELAY_MS); });
+        }).then(function () {
+          if (overlay.isCancelled()) return null;
+          return sleep(CONFIG.DELAY_MS);
+        });
       });
     });
 
     return pipeline.then(function () {
+      if (overlay.isCancelled()) {
+        showToast('수집을 취소했습니다.');
+        return null;
+      }
       overlay.remove();
       if (lines.length === 0) {
         return showAlert('수집된 데이터가 없습니다. (집품중/집품대기 상태의 아이템이 없을 수 있습니다)');
@@ -804,6 +851,10 @@
       return openInventoryTab(payload, lines.length);
     }).catch(function (err) {
       overlay.remove();
+      if (overlay.isCancelled() || isAbortError(err)) {
+        showToast('수집을 취소했습니다.');
+        return null;
+      }
       throw err;
     });
   }
@@ -857,10 +908,10 @@
     return barcode;
   }
 
-  function fetchInventoryAllPages(skuId) {
+  function fetchInventoryAllPages(skuId, signal) {
     var results = [];
     function loop(page) {
-      return fetch(CONFIG.INVENTORY_SEARCH_URL(skuId, page), { credentials: 'same-origin' }).then(function (resp) {
+      return fetch(CONFIG.INVENTORY_SEARCH_URL(skuId, page), { credentials: 'same-origin', signal: signal }).then(function (resp) {
         if (!resp.ok) throw new Error('요청 실패 (' + resp.status + ')');
         return resp.json();
       }).then(function (json) {
@@ -895,6 +946,15 @@
     }
 
     var overlay = createProgressOverlay('데이터 수집중');
+
+    // 취소하면 수집 결과를 버리므로, 1단계부터 다시 하지 않아도 되도록
+    // window.name 에 실려 온 원본 데이터를 되돌려 놓습니다.
+    function cancelledStep2() {
+      window.name = name;
+      showToast('조회를 취소했습니다.\n이 탭에서 북마크릿을 다시 누르면 처음부터 조회합니다.');
+      return null;
+    }
+
     var rawRecords = [];
     var pipeline = Promise.resolve();
     lines.forEach(function (line, idx) {
@@ -902,18 +962,24 @@
       var skuId = parts[0];
       var common = (parts[1] || '').split('\t');
       pipeline = pipeline.then(function () {
+        if (overlay.isCancelled()) return null;
         overlay.update(idx + 1, lines.length, skuId);
-        return fetchInventoryAllPages(skuId).then(function (entries) {
+        return fetchInventoryAllPages(skuId, overlay.signal).then(function (entries) {
           entries.forEach(function (entry) {
             rawRecords.push({ groupNo: common[0], rest: common.slice(1), zone: entry.zone, qty: entry.qty });
           });
         }).catch(function (err) {
+          if (overlay.isCancelled() || isAbortError(err)) return;
           console.error('skuId=' + skuId + ' 재고 조회 실패:', err);
-        }).then(function () { return sleep(CONFIG.DELAY_MS); });
+        }).then(function () {
+          if (overlay.isCancelled()) return null;
+          return sleep(CONFIG.DELAY_MS);
+        });
       });
     });
 
     return pipeline.then(function () {
+      if (overlay.isCancelled()) return cancelledStep2();
       overlay.remove();
       if (rawRecords.length === 0) {
         return showAlert('수집된 데이터가 없습니다. (수량이 0이거나 일치하는 항목이 없음)');
@@ -937,6 +1003,7 @@
       return null;
     }).catch(function (err) {
       overlay.remove();
+      if (overlay.isCancelled() || isAbortError(err)) return cancelledStep2();
       throw err;
     });
   }
