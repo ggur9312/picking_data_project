@@ -168,6 +168,7 @@
     'box-shadow:var(--sh);width:1040px;max-width:100%;max-height:86vh;',
     'display:flex;flex-direction:column;overflow:hidden;}',
     '.cpm-card.cpm-sm{width:540px;}',
+    '.cpm-card.cpm-md{width:760px;}',
     '.cpm-header{display:flex;align-items:center;gap:10px;padding:16px 20px;',
     'border-bottom:var(--bw) solid var(--c-bd);flex:0 0 auto;}',
     '.cpm-title{font-size:var(--ft);font-weight:700;margin:0;color:var(--c-tt);}',
@@ -320,7 +321,7 @@
     root.className = 'cpm-root';
 
     var card = document.createElement('div');
-    card.className = 'cpm-card' + (opts.size === 'sm' ? ' cpm-sm' : '');
+    card.className = 'cpm-card' + (opts.size === 'sm' ? ' cpm-sm' : opts.size === 'md' ? ' cpm-md' : '');
 
     var badgeHtml = opts.badge ? '<span class="cpm-badge">' + escapeHtml(opts.badge) + '</span>' : '';
     var buttonsHtml = buttons.map(function (b, i) {
@@ -505,7 +506,7 @@
         '<label class="cpm-radio"><input type="radio" name="cpm-mode" value="fast" checked>' +
         '<span><b>빠른 수집</b><small>위치·수량을 바로 합산합니다. 빠르지만 반출 외 할당이 섞여 수량이 많게 나올 수 있습니다.</small></span></label>' +
         '<label class="cpm-radio"><input type="radio" name="cpm-mode" value="alloc">' +
-        '<span><b>정확한 할당</b><small>반출 할당만 골라 집계합니다. 정확하지만 SKU마다 상세 조회를 더 해서 느립니다.</small></span></label>' +
+        '<span><b>정확한 할당 수집</b><small>반출 할당만 골라 집계합니다. 정확하지만 SKU마다 상세 조회가 추가되어 시간이 더 소요됩니다.</small></span></label>' +
         '</div>' +
         '<div class="cpm-field">' +
         '<div class="cpm-label">처리할 행 번호</div>' +
@@ -537,7 +538,7 @@
 
       modal = openModal({
         title: '데이터 수집',
-        size: 'sm',
+        size: 'md',
         bodyHtml: bodyHtml,
         buttons: [
           { label: '취소', onClick: function (m) { m.close(); done(null); } },
@@ -631,7 +632,7 @@
 
     var warnHtml = mode === 'fast'
       ? '<div class="cpm-warn">⚠ 빠른 수집 결과입니다. 반출 외 할당이 섞여 수량이 실제보다 많을 수 있습니다. ' +
-        '정확한 값이 필요하면 "정확한 할당" 모드로 다시 수집하세요.</div>'
+        '정확한 값이 필요하면 "정확한 할당 수집" 모드로 다시 수집하세요.</div>'
       : '';
 
     var bodyHtml = warnHtml +
