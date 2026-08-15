@@ -139,6 +139,7 @@
     '--c-inp:#ffffff;--c-ib:#cbd5e1;--c-th:#eef2ff;--c-thf:#334155;--c-alt:#f8fafc;--c-hov:#eff6ff;',
     '--c-b2f:#334155;--c-b2h:#f8fafc;--c-trk:#e2e8f0;--c-cd:#e2e8f0;--c-cdf:#334155;',
     '--c-acc:#2563eb;--c-acch:#1d4ed8;--c-accf:#ffffff;--c-ring:#93c5fd;--c-ok:#16a34a;',
+    '--c-warnbg:#fef3c7;--c-warnfg:#92400e;--c-warnbd:#fcd34d;',
     '--c-bar:linear-gradient(90deg,#38bdf8,#0284c7);'
   ].join('');
 
@@ -146,7 +147,8 @@
     '--c-bg:#111827;--c-fg:#e2e8f0;--c-tt:#f8fafc;--c-bd:#1f2937;--c-rbd:#1f2937;',
     '--c-sec:#cbd5e1;--c-mu:#94a3b8;--c-mu2:#94a3b8;--c-fld:#0f172a;',
     '--c-inp:#0b1220;--c-ib:#334155;--c-th:#1e293b;--c-thf:#cbd5e1;--c-alt:#161f2e;--c-hov:#1e2b40;',
-    '--c-b2f:#e2e8f0;--c-b2h:#1a2333;--c-trk:#334155;--c-cd:#1e293b;--c-cdf:#cbd5e1;'
+    '--c-b2f:#e2e8f0;--c-b2h:#1a2333;--c-trk:#334155;--c-cd:#1e293b;--c-cdf:#cbd5e1;',
+    '--c-warnbg:#422006;--c-warnfg:#fde68a;--c-warnbd:#854d0e;'
   ].join('');
 
   // 모달은 Shadow DOM 안에서 렌더되므로 호스트 페이지 CSS가 선택자로 침투할 수
@@ -202,6 +204,9 @@
     '.cpm-hint{font-size:var(--f2);color:var(--c-mu);margin-top:8px;}',
     '.cpm-hint code{background:var(--c-cd);color:var(--c-cdf);border-radius:4px;padding:1px 5px;',
     'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--f3);}',
+    '.cpm-warn{margin:16px 20px 0;padding:10px 14px;border-radius:var(--rs);',
+    'background:var(--c-warnbg);color:var(--c-warnfg);border:var(--bw) solid var(--c-warnbd);',
+    'font-size:var(--f2);line-height:1.45;}',
     '.cpm-table{border-collapse:collapse;width:100%;min-width:max-content;',
     'font-size:var(--f1);}',
     '.cpm-table thead th{position:sticky;top:0;background:var(--c-th);color:var(--c-thf);text-align:left;',
@@ -496,6 +501,13 @@
         '<span><b>전체 페이지</b><small>지금 걸려 있는 검색 조건으로 모든 페이지를 서버에서 가져옵니다.</small></span></label>' +
         '</div>' +
         '<div class="cpm-field">' +
+        '<div class="cpm-label">수집 방식</div>' +
+        '<label class="cpm-radio"><input type="radio" name="cpm-mode" value="fast" checked>' +
+        '<span><b>빠른 수집</b><small>위치·수량을 바로 합산합니다. 빠르지만 반출 외 할당이 섞여 수량이 많게 나올 수 있습니다.</small></span></label>' +
+        '<label class="cpm-radio"><input type="radio" name="cpm-mode" value="alloc">' +
+        '<span><b>정확한 할당</b><small>반출 할당만 골라 집계합니다. 정확하지만 SKU마다 상세 조회를 더 해서 느립니다.</small></span></label>' +
+        '</div>' +
+        '<div class="cpm-field">' +
         '<div class="cpm-label">처리할 행 번호</div>' +
         '<input type="text" class="cpm-input" data-cpm-rows placeholder="비워두면 전체 처리">' +
         '<div class="cpm-hint">예: <code>4</code> · <code>1,3,4</code> · <code>1-3</code> · <code>1~3</code><br>' +
@@ -509,12 +521,18 @@
         return checked ? checked.value : 'page';
       }
 
+      function currentMode() {
+        var checked = modal.query('input[name="cpm-mode"]:checked');
+        return checked ? checked.value : 'fast';
+      }
+
       function submit() {
         var input = modal.query('[data-cpm-rows]');
         var value = input ? input.value : '';
         var scope = currentScope();
+        var mode = currentMode();
         modal.close();
-        done({ scope: scope, selection: value });
+        done({ scope: scope, selection: value, mode: mode });
       }
 
       modal = openModal({
@@ -604,14 +622,19 @@
     }
   }
 
-  function showResultModal(rows) {
+  function showResultModal(rows, mode) {
     var tsv = buildTsv(rows);
     var tableRowsHtml = rows.map(function (r) {
       return '<tr>' + r.map(function (v) { return '<td>' + escapeHtml(v) + '</td>'; }).join('') + '</tr>';
     }).join('');
     var headHtml = HEADERS.map(function (h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('');
 
-    var bodyHtml =
+    var warnHtml = mode === 'fast'
+      ? '<div class="cpm-warn">⚠ 빠른 수집 결과입니다. 반출 외 할당이 섞여 수량이 실제보다 많을 수 있습니다. ' +
+        '정확한 값이 필요하면 "정확한 할당" 모드로 다시 수집하세요.</div>'
+      : '';
+
+    var bodyHtml = warnHtml +
       '<table class="cpm-table"><thead><tr>' + headHtml + '</tr></thead>' +
       '<tbody>' + tableRowsHtml + '</tbody></table>' +
       '<details class="cpm-details"><summary>원본 데이터 (TSV) 보기</summary>' +
@@ -1013,7 +1036,7 @@
     return Promise.resolve();
   }
 
-  function processLinks(links) {
+  function processLinks(links, mode) {
     var overlay = createProgressOverlay('데이터 수집중');
     var lines = [];
     var pipeline = Promise.resolve();
@@ -1044,7 +1067,7 @@
       if (lines.length === 0) {
         return showAlert('수집된 데이터가 없습니다. (집품중/집품대기 상태의 아이템이 없을 수 있습니다)');
       }
-      var payload = CONFIG.PAYLOAD_PREFIX + lines.join('\n');
+      var payload = CONFIG.PAYLOAD_PREFIX + '#mode=' + (mode || 'fast') + '\n' + lines.join('\n');
       if (payload.length > CONFIG.MAX_PAYLOAD_CHARS) {
         return showConfirm('수집 데이터가 매우 큽니다 (' + payload.length + '자).\n브라우저에 따라 다음 탭으로 전달되지 않을 수 있습니다.\n\n계속할까요?', '계속 진행', '취소')
           .then(function (ok) { return ok ? openInventoryTab(payload, lines.length, step2) : null; });
@@ -1069,7 +1092,7 @@
       if (!choice) return null;
       if (choice.scope === 'all') {
         return collectAllPages(visibleRows.length).then(function (hrefs) {
-          return hrefs ? { hrefs: hrefs, selection: choice.selection } : null;
+          return hrefs ? { hrefs: hrefs, selection: choice.selection, mode: choice.mode } : null;
         });
       }
       if (visibleRows.length === 0) {
@@ -1081,7 +1104,7 @@
         var cell = cells && cells.length > 1 ? cells[1] : null;
         hrefs.push(cell ? absoluteHref(cell.querySelector('a')) : '');
       }
-      return { hrefs: hrefs, selection: choice.selection };
+      return { hrefs: hrefs, selection: choice.selection, mode: choice.mode };
     }).then(function (ctx) {
       if (!ctx) return null;
       var selected = parseRowSelection(ctx.selection, ctx.hrefs.length);
@@ -1096,7 +1119,7 @@
         return showAlert('수집할 링크가 없습니다.');
       }
       return confirmWorkload(links).then(function (ok) {
-        return ok ? processLinks(links) : null;
+        return ok ? processLinks(links, ctx.mode) : null;
       });
     });
   }
@@ -1134,8 +1157,13 @@
     });
   }
 
-  function fetchInventoryAllPages(skuId, signal) {
-    // 1) 할당수량이 있는 PICKING 행을 먼저 모읍니다. (아직 우리 할당인지 미확정)
+  // mode 'fast': PICKING 행의 allocatedQuantity 를 바로 합산합니다. 빠르지만
+  //   반출 외 할당이 섞일 수 있습니다.
+  // mode 'alloc': PICKING 행마다 할당 상세를 조회해 반출(jobType) 수량만 집계합니다.
+  //   정확하지만 SKU 하나에 상세 조회가 여러 번 붙어 느립니다.
+  function fetchInventoryAllPages(skuId, signal, mode) {
+    var fast = mode !== 'alloc';
+    var direct = [];
     var candidates = [];
     function loop(page) {
       var url = CONFIG.INVENTORY_SEARCH_URL(skuId, page);
@@ -1152,11 +1180,12 @@
         }
         json.result.content.forEach(function (row) {
           var qty = Number(row.allocatedQuantity) || 0;
-          if (row.locationType === 'PICKING' && qty > 0 && row.inventoryId) {
-            candidates.push({
-              inventoryId: row.inventoryId,
-              zone: zoneFromLocationBarcode(row.locationBarcode)
-            });
+          if (row.locationType !== 'PICKING' || qty <= 0) return;
+          var zone = zoneFromLocationBarcode(row.locationBarcode);
+          if (fast) {
+            direct.push({ zone: zone, qty: qty });
+          } else if (row.inventoryId) {
+            candidates.push({ inventoryId: row.inventoryId, zone: zone });
           }
         });
         if (json.result.last === true || json.result.content.length === 0) {
@@ -1166,8 +1195,9 @@
       });
     }
 
-    // 2) 각 행의 inventoryId 로 할당 상세를 조회해 우리 할당(반출) 수량만 수집합니다.
     return loop(0).then(function () {
+      if (fast) return direct;
+      // 각 행의 inventoryId 로 할당 상세를 조회해 반출 수량만 수집합니다.
       var results = [];
       var chain = Promise.resolve();
       candidates.forEach(function (cand) {
@@ -1197,6 +1227,10 @@
     }
     window.name = '';
     var body = name.slice(CONFIG.PAYLOAD_PREFIX.length);
+    // 수집 방식은 1단계에서 정해 "#mode=..." 헤더 줄로 실려 옵니다. 헤더가 없는
+    // 예전 페이로드는 정확한 할당(alloc)으로 간주합니다.
+    var modeMatch = body.match(/^#mode=(\w+)/);
+    var mode = modeMatch ? modeMatch[1] : 'alloc';
     var lines = body.split('\n').filter(function (l) { return l.indexOf('||') !== -1; });
     if (lines.length === 0) {
       return showAlert('처리할 데이터가 없습니다.');
@@ -1230,7 +1264,7 @@
       pipeline = pipeline.then(function () {
         if (overlay.isCancelled()) return null;
         overlay.update(idx + 1, lines.length, skuId);
-        return fetchInventoryAllPages(skuId, overlay.signal).then(function (entries) {
+        return fetchInventoryAllPages(skuId, overlay.signal, mode).then(function (entries) {
           entries.forEach(function (entry) {
             rawRecords.push({ groupNo: common[0], rest: common.slice(1), zone: entry.zone, qty: entry.qty });
           });
@@ -1266,7 +1300,7 @@
         });
         return [item.groupNo].concat(rest).concat([item.zone, item.qty]);
       });
-      showResultModal(rows);
+      showResultModal(rows, mode);
       return null;
     }).catch(function (err) {
       overlay.remove();
