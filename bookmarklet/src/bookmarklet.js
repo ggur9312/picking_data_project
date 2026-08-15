@@ -42,6 +42,11 @@
         encodeURIComponent(skuId) + '&externalSkuId=&skuBarcode=&lpnId=&inventoryId=&saleableChangeType=&availableInventory=true&page=' +
         page + '&pageSize=' + CONFIG.INVENTORY_PAGE_SIZE;
     },
+    ALLOCATED_DETAIL_URL: function (inventoryId) {
+      return 'https://inventory.coupang.com/async/inventory/allocated/quantity/detail/' +
+        encodeURIComponent(inventoryId);
+    },
+    VENDOR_RETURN_JOB_TYPE: 'INVENTORY_MOVE_VENDOR_RETURN',
     INVENTORY_PAGE_URL: 'https://inventory.coupang.com/inventory/list',
     PICKING_STATUS_SUBSTR: '집품',
     FETCH_CREDENTIALS: 'include',
@@ -1105,8 +1110,33 @@
     return barcode;
   }
 
+  // 할당 상세 API를 호출해 "우리 할당(반출)" 수량만 합산해서 돌려줍니다.
+  // jobType 이 INVENTORY_MOVE_VENDOR_RETURN 인 항목의 allocatedQuantity 만 집계합니다.
+  function fetchVendorReturnQty(inventoryId, signal) {
+    var url = CONFIG.ALLOCATED_DETAIL_URL(inventoryId);
+    return fetch(url, { credentials: 'same-origin', signal: signal }).then(function (resp) {
+      checkSession(resp, url);
+      if (!resp.ok) throw new Error('요청 실패 (' + resp.status + ')');
+      return resp.text();
+    }).then(function (text) {
+      if (looksLikeLoginHtml(text)) throw sessionError(url);
+      var json = JSON.parse(text);
+      if (!json || !json.success || !Array.isArray(json.result)) {
+        return 0;
+      }
+      var sum = 0;
+      json.result.forEach(function (item) {
+        if (item && item.jobType === CONFIG.VENDOR_RETURN_JOB_TYPE) {
+          sum += Number(item.allocatedQuantity) || 0;
+        }
+      });
+      return sum;
+    });
+  }
+
   function fetchInventoryAllPages(skuId, signal) {
-    var results = [];
+    // 1) 할당수량이 있는 PICKING 행을 먼저 모읍니다. (아직 우리 할당인지 미확정)
+    var candidates = [];
     function loop(page) {
       var url = CONFIG.INVENTORY_SEARCH_URL(skuId, page);
       return fetch(url, { credentials: 'same-origin', signal: signal }).then(function (resp) {
@@ -1118,21 +1148,46 @@
         return JSON.parse(text);
       }).then(function (json) {
         if (!json || !json.success || !json.result || !Array.isArray(json.result.content)) {
-          return results;
+          return;
         }
         json.result.content.forEach(function (row) {
           var qty = Number(row.allocatedQuantity) || 0;
-          if (row.locationType === 'PICKING' && qty > 0) {
-            results.push({ zone: zoneFromLocationBarcode(row.locationBarcode), qty: qty });
+          if (row.locationType === 'PICKING' && qty > 0 && row.inventoryId) {
+            candidates.push({
+              inventoryId: row.inventoryId,
+              zone: zoneFromLocationBarcode(row.locationBarcode)
+            });
           }
         });
         if (json.result.last === true || json.result.content.length === 0) {
-          return results;
+          return;
         }
         return loop(page + 1);
       });
     }
-    return loop(0);
+
+    // 2) 각 행의 inventoryId 로 할당 상세를 조회해 우리 할당(반출) 수량만 수집합니다.
+    return loop(0).then(function () {
+      var results = [];
+      var chain = Promise.resolve();
+      candidates.forEach(function (cand) {
+        chain = chain.then(function () {
+          return fetchVendorReturnQty(cand.inventoryId, signal).then(function (vrQty) {
+            if (vrQty > 0) {
+              results.push({ zone: cand.zone, qty: vrQty });
+            }
+          }).catch(function (err) {
+            // 세션 만료/취소는 상위(runStep2)에서 처리하도록 다시 던지고,
+            // 그 외 오류는 해당 행만 건너뜁니다. (전체 skuId 결과를 버리지 않도록)
+            if (isSessionExpired(err) || isAbortError(err)) throw err;
+            console.error('inventoryId=' + cand.inventoryId + ' 할당 상세 조회 실패:', err);
+          }).then(function () {
+            return sleep(CONFIG.DELAY_MS);
+          });
+        });
+      });
+      return chain.then(function () { return results; });
+    });
   }
 
   function runStep2() {

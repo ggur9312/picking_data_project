@@ -50,7 +50,7 @@ Node.js 설치 없이 브라우저만으로 설치할 수 있습니다 (`bookmar
 - 이때 `size=10000`으로 한 번에 요청하되, 서버가 이 값을 무시하고 더 작게 잘라서 주더라도 **새 링크가 하나도 없는 페이지가 나올 때까지** `page`를 늘려가며 계속 요청하므로 두 경우 모두 전량을 가져옵니다 (최대 200페이지).
 - 1단계에서 각 반품 건의 상세 페이지를 열어 그룹번호/마감일시/생성일시/매입유형/업체명/상태/운송타입을 읽고, 아이템 목록에서 **상태에 "집품"이 포함된 행만**(집품중/집품대기 등) skuId를 추출합니다.
 - 2단계에서 각 skuId를 재고조회 API로 조회합니다. 이 API는 한 번에 최대 20건(`pageSize=20`)만 반환하므로, `page`를 늘려가며 `result.last === true`가 될 때까지 반복 조회합니다.
-- 재고 항목 중 `locationType === "PICKING"`이고 수량(`allocatedQuantity`)이 1 이상인 것만 채택하고, `locationBarcode`(예: `149-72L105-16-301`)에서 두 번째 구간(`72L105`)이 숫자로 시작하면 앞 3글자(`72L`)를 존으로 사용합니다.
+- 재고 항목 중 `locationType === "PICKING"`이고 수량(`allocatedQuantity`)이 1 이상인 행을 후보로 모은 뒤, **각 행의 `inventoryId`로 할당 상세 API(`.../async/inventory/allocated/quantity/detail/{inventoryId}`)를 조회해 "우리 할당(반출)"인지 확인**합니다. 상세 응답의 `result[]` 중 `jobType === "INVENTORY_MOVE_VENDOR_RETURN"`(반출)인 항목만 우리 할당으로 보고, 그 항목들의 `allocatedQuantity` 합계만 수량으로 채택합니다. 즉 다른 작업으로 할당된 수량은 제외됩니다. 존은 `locationBarcode`(예: `149-72L105-16-301`)에서 두 번째 구간(`72L105`)이 숫자로 시작하면 앞 3글자(`72L`)를 사용합니다.
 
 ## 알려진 가정 / 리스크
 
@@ -58,6 +58,7 @@ Node.js 설치 없이 브라우저만으로 설치할 수 있습니다 (`bookmar
 - **상세 페이지 컬럼 위치**: table1/table2의 각 열 위치, 그리고 매입유형이 "쿠팡상품"인지 아닌지에 따라 마감일시 소스 위치가 달라지는 조건부 로직이 들어있습니다 — `scrapeCommonData` 함수 참고.
 - **재고 API 페이지네이션**: `pageSize=20`이 현재 서버가 허용하는 최댓값이라는 전제입니다. 여전히 막히면 `CONFIG.INVENTORY_PAGE_SIZE`를 더 낮춰보세요.
 - **재고 API 응답 구조**: `json.success`, `json.result.content`(배열), `json.result.last`(마지막 페이지 여부)를 전제로 합니다. 구조가 다르면 `fetchInventoryAllPages` 함수를 수정하세요.
+- **할당 상세 API**: 할당수량이 있는 행의 `inventoryId`로 `.../async/inventory/allocated/quantity/detail/{inventoryId}`를 호출하고, 응답 `json.result`(배열)의 각 항목이 `jobType` / `allocatedQuantity`를 가진다고 전제합니다. "우리 할당" 판별 잡타입은 `CONFIG.VENDOR_RETURN_JOB_TYPE`(`INVENTORY_MOVE_VENDOR_RETURN`)이며, 잡타입 코드가 바뀌면 이 값을 고치세요. 이 확인 때문에 할당된 행마다 요청이 한 번씩 추가되어, 할당 행이 많으면 2단계가 다소 느려질 수 있습니다. 특정 `inventoryId` 상세 조회가 실패하면 그 행만 건너뛰고(콘솔에 로그) 나머지는 계속 수집합니다. 상세 응답 구조가 다르면 `fetchVendorReturnQty` 함수를 수정하세요.
 - **검색 폼 필드 이름**: `전체 페이지` 모드는 검색 조건을 `input`/`select`의 `name` 속성으로 찾습니다. 어드민 UI가 개편되어 `name`이 바뀌면 조건이 빈 값으로 나가 결과가 이상해질 수 있습니다 — 콘솔에 찍히는 `[북마크릿] 목록 전체 조회 파라미터:` 로그를 실제 요청과 대조하고, `CONFIG.LIST_PARAM_NAMES`를 고치세요.
 - **window.name 특성**: 재고조회 탭을 닫거나 다른 곳으로 이동하면 데이터가 유실됩니다 — 이 경우 목록 페이지에서 1단계부터 다시 실행하세요. 수집량이 아주 많으면(`CONFIG.MAX_PAYLOAD_CHARS` 초과) 전달 실패 가능성을 경고 모달로 알립니다.
 - **팝업 차단**: 결과는 이제 모달이라 팝업 차단과 무관하지만, 1단계에서 재고조회 탭을 자동으로 열 때는 여전히 팝업 허용이 필요합니다.
